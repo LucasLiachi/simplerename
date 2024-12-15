@@ -11,9 +11,9 @@ def read_requirements():
 
 setup(
     name="simplerename",
-    version="1.0.0",
+    version="0.0.1",
     description="A simple batch file renaming tool",
-    author="Lucas",
+    author="Lucas Liachi",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
