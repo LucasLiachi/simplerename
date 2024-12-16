@@ -1,27 +1,21 @@
 # Simple Rename
 
-A powerful yet user-friendly batch file renaming tool built with Python and PyQt6.
+A lightweight file renaming tool built with Python and PyQt6.
 
 ## Features
 
-- Batch rename files with multiple operations:
-  - Add prefix/suffix
-  - Find and replace text
-  - Change case (UPPERCASE, lowercase, Title Case)
-  - Add sequential numbers
-  - Add date/time stamps
-- Advanced filtering and sorting:
-  - Filter by extension, name pattern, size, or date
-  - Sort by name, extension, size, or date
-  - Combine multiple filters
-- Undo/Redo support:
-  - Track rename operations
-  - Batch undo/redo
-  - Operation history
-- Configuration management:
-  - Save/load rename configurations
-  - Export rename lists to CSV
-  - Persistent settings
+- Simple and efficient file renaming:
+  - Direct editing in spreadsheet-like interface
+  - Format column for easy file type identification
+  - Automatic extension preservation
+  - Smart file name validation
+  - Backup creation during renaming
+  - Detailed operation feedback
+- Clean and intuitive interface:
+  - Directory browser
+  - File list with editable names
+  - Status updates
+  - Error handling
 
 # History: Building SimpleRename with Perplexity AI
 
@@ -78,6 +72,18 @@ Finally, Perplexity AI offered guidance on packaging SimpleRename for distributi
 Throughout the development process, Perplexity AI served as an invaluable resource, providing detailed, context-aware responses to specific implementation challenges. This AI-assisted approach significantly accelerated the development cycle and contributed to the creation of a robust, feature-rich application that effectively addresses the complexities of bulk file renaming.
 
 ## Installation
+
+### Prerequisites
+- Python 3.8 or higher
+- Git
+- pip (Python package manager)
+
+You can verify your installations with:
+```bash
+python --version
+git --version
+pip --version
+```
 
 ### From Source
 ```bash

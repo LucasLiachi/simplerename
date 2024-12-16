@@ -14,26 +14,16 @@ setup(
     version="0.0.1",
     description="A simple batch file renaming tool",
     author="Lucas Liachi",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    packages=find_packages(),
     install_requires=[
         "PyQt6>=6.4.0",
         "pyinstaller>=5.7.0"
-    ] + read_requirements(),
+    ],
     entry_points={
         "console_scripts": [
-            "simplerename=simplerename.main:main",
+            "simplerename=src.main:main",
         ],
     },
-    classifiers=[
-        "Development Status :: 3 - Alpha",
-        "Intended Audience :: End Users/Desktop",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-    ],
     python_requires=">=3.8",
 )
 

@@ -1,3 +1,15 @@
+"""
+Configuration and settings manager.
+Responsible for:
+- Managing application settings
+- Saving and loading configurations
+- Handling rename lists import/export
+- Managing application directories
+
+Used by:
+- main_window.py: For settings management
+- rename_controller.py: For configuration access
+"""
 import json
 import csv
 import os

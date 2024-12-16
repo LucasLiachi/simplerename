@@ -1,3 +1,31 @@
+"""
+Central controller for rename operations.
+Responsible for:
+- Coordinating rename operations
+- Defining system constants and settings
+- Managing error and success messages
+
+Dependencies:
+- file_manager.py: For executing file operations
+
+Used by:
+- main_window.py: For processing rename requests
+"""
+from typing import List, Dict, Any
+import os
+from datetime import datetime
+from .file_manager import rename_files, validate_new_names
+
+class RenameController:
+    def __init__(self):
+        pass
+    
+    def execute_rename(self, changes: List[tuple]) -> Dict[str, str]:
+        """Execute the actual file renaming"""
+        old_names = [old for old, _ in changes]
+        new_names = [new for _, new in changes]
+        return rename_files(old_names, new_names)
+
 from pathlib import Path
 
 # File System Constants
@@ -42,3 +70,4 @@ ERROR_MESSAGES = {
 STATUS_SUCCESS = 0
 STATUS_ERROR = 1
 STATUS_WARNING = 2
+

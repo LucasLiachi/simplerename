@@ -1,3 +1,15 @@
+"""
+Manages operation history and undo/redo functionality.
+Responsible for:
+- Tracking rename operations history
+- Enabling undo/redo capabilities
+- Managing operation batches
+- Saving and loading operation history
+
+Used by:
+- main_window.py: For history tracking
+- rename_controller.py: For operation management
+"""
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
