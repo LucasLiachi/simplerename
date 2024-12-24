@@ -16,13 +16,27 @@ import shutil
 import logging
 from typing import List, Dict, Any
 from PyQt6.QtCore import Qt, QAbstractTableModel
+from datetime import datetime
 
 class FileTableModel(QAbstractTableModel):
     def __init__(self):
         super().__init__()
         self.files = []
-        self.headers = ["Name", "New Name", "Format"]
-    
+        self.headers = ['Name', 'Format', '+', 'New Name']  # Added '+' column
+        self.custom_columns = []
+        self.custom_data = {}  # Armazena dados das colunas customizadas
+
+    def add_custom_column(self, title: str):
+        """Adiciona uma nova coluna customizada"""
+        self.custom_columns.append(title)
+        self.headers = ['Name', 'Format', '+'] + self.custom_columns + ['New Name']
+        # Inicializa dados vazios para a nova coluna
+        for file in self.files:
+            if file['path'] not in self.custom_data:
+                self.custom_data[file['path']] = {}
+            self.custom_data[file['path']][title] = ''
+        self.layoutChanged.emit()
+
     def load_files(self, files: List[Dict[str, Any]]):
         """Load files into the model"""
         self.beginResetModel()
@@ -38,29 +52,80 @@ class FileTableModel(QAbstractTableModel):
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
+
+        col = index.column()
+        file = self.files[index.row()]
+
+        # Colunas customizadas
+        custom_col_start = 3
+        custom_col_end = custom_col_start + len(self.custom_columns)
+        
+        if custom_col_start <= col < custom_col_end:
+            if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
+                column_title = self.headers[col]
+                return self.custom_data.get(file['path'], {}).get(column_title, '')
             
         if role == Qt.ItemDataRole.DisplayRole:
-            file = self.files[index.row()]
-            column = index.column()
-            
-            if column == 0:
-                return file.get('name', '')  # Nome completo com extensão
-            elif column == 1:
-                return file.get('new_name', '')  # Apenas o novo nome, sem extensão
-            elif column == 2:
-                return file.get('format', '')  # Formato/extensão
-            
-        elif role == Qt.ItemDataRole.EditRole and index.column() == 1:
-            return self.files[index.row()].get('new_name', '')  # Retorna apenas o nome para edição
-            
+            if col == 0:
+                return file['name']
+            elif col == 1:
+                return file['format']
+            elif col == 2:
+                return ''  # '+' column is empty
+            elif col == custom_col_end:
+                return file['new_name']
+            # ...existing code...
+
+        if role == Qt.ItemDataRole.EditRole:
+            if col == 0:
+                return file['name']
+            elif col == custom_col_end:
+                return file['new_name']
+            # ...existing code...
+
         return None
     
+    def get_custom_column_indices(self) -> List[int]:
+        """Retorna os índices das colunas customizadas"""
+        format_idx = 1
+        new_name_idx = len(self.headers) - 1
+        return list(range(3, new_name_idx))  # Exclui colunas padrão e coluna '+'
+
+    def get_custom_column_data(self, row: int) -> Dict[str, str]:
+        """Retorna os dados das colunas customizadas para uma linha específica"""
+        custom_data = {}
+        for col in self.get_custom_column_indices():
+            header = self.headers[col]
+            index = self.index(row, col)
+            value = self.data(index, Qt.ItemDataRole.DisplayRole)
+            if value:
+                custom_data[header] = value
+        return custom_data
+
     def setData(self, index, value, role=Qt.ItemDataRole.EditRole):
-        if role == Qt.ItemDataRole.EditRole and index.column() == 1:
-            # Armazenar apenas o nome sem extensão
-            self.files[index.row()]['new_name'] = value
+        if not index.isValid():
+            return False
+
+        row = index.row()
+        col = index.column()
+        
+        # Para colunas customizadas
+        if col in self.get_custom_column_indices():
+            if role == Qt.ItemDataRole.EditRole:
+                header = self.headers[col]
+                file_path = self.files[row]['path']
+                if file_path not in self.custom_data:
+                    self.custom_data[file_path] = {}
+                self.custom_data[file_path][header] = value
+                self.dataChanged.emit(index, index)
+                return True
+                
+        # Para a coluna New Name
+        elif col == len(self.headers) - 1 and role == Qt.ItemDataRole.EditRole:
+            self.files[row]['new_name'] = value
             self.dataChanged.emit(index, index)
             return True
+            
         return False
     
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -69,10 +134,20 @@ class FileTableModel(QAbstractTableModel):
         return None
 
     def flags(self, index):
-        default_flags = super().flags(index)
-        if index.column() == 1:  # "New Name" column
-            return default_flags | Qt.ItemFlag.ItemIsEditable
-        return default_flags
+        flags = super().flags(index)
+        
+        # Torna as colunas customizadas editáveis
+        custom_col_start = 3
+        custom_col_end = custom_col_start + len(self.custom_columns)
+        
+        if custom_col_start <= index.column() < custom_col_end:
+            return flags | Qt.ItemFlag.ItemIsEditable
+            
+        # Mantém a última coluna (New Name) editável
+        if index.column() == len(self.headers) - 1:
+            return flags | Qt.ItemFlag.ItemIsEditable
+            
+        return flags
 
 class FileOperationError(Exception):
     """Custom exception for file operation errors"""

@@ -21,8 +21,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Simple Rename")
-        self.setMinimumSize(1024, 768)
-        self.resize(1280, 800)
+        
+        # Remover as configurações de tamanho fixo
+        # self.setMinimumSize(1024, 768)
+        # self.resize(1280, 800)
+        
+        # Adicionar configuração de tela cheia
+        self.showMaximized()
         
         # Center window
         screen = self.screen().availableGeometry()
@@ -51,15 +56,29 @@ class MainWindow(QMainWindow):
         # File list
         self.spreadsheet_view = SpreadsheetView()
         
-        # Apply button
+        # Buttons container
+        button_container = QWidget()
+        button_layout = QHBoxLayout(button_container)
+        
+        # Prepare Rename button
+        prepare_button = QPushButton("Prepare Rename")
+        prepare_button.clicked.connect(self.prepare_rename)
+        prepare_button.setStyleSheet("background-color: #2196F3; color: white; padding: 5px 15px;")
+        
+        # Apply button (moved from existing code)
         apply_button = QPushButton("Apply Changes")
         apply_button.clicked.connect(self.apply_changes)
         apply_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px 15px;")
         
-        # Layout assembly
+        # Add buttons to layout
+        button_layout.addWidget(prepare_button)
+        button_layout.addWidget(apply_button)
+        button_layout.addStretch()  # Alinha os botões à esquerda
+        
+        # Layout assembly (modificado)
         self.main_layout.addWidget(dir_widget)
         self.main_layout.addWidget(self.spreadsheet_view)
-        self.main_layout.addWidget(apply_button)
+        self.main_layout.addWidget(button_container)  # Adiciona container de botões
         
         # Status bar
         self.setStatusBar(QStatusBar())
@@ -93,6 +112,19 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             self.statusBar().showMessage(f"Error: {str(e)}")
+    
+    def prepare_rename(self):
+        """Handler for Prepare Rename button"""
+        if not self.current_directory:
+            self.statusBar().showMessage("No directory selected")
+            return
+            
+        try:
+            self.spreadsheet_view.prepare_rename_files()
+            self.statusBar().showMessage("New names prepared from custom columns")
+        except Exception as e:
+            self.statusBar().showMessage(f"Error preparing names: {str(e)}")
+
 import os
 import shutil
 import logging
