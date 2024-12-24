@@ -22,19 +22,21 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Simple Rename")
         
-        # Remover as configurações de tamanho fixo
-        # self.setMinimumSize(1024, 768)
-        # self.resize(1280, 800)
+        # Ajuste para compatibilidade com Wayland
+        self.setMinimumSize(800, 600)  # Tamanho mínimo razoável
         
-        # Adicionar configuração de tela cheia
-        self.showMaximized()
-        
-        # Center window
+        # Modificar a inicialização em tela cheia
         screen = self.screen().availableGeometry()
-        self.move(
-            (screen.width() - self.width()) // 2,
-            (screen.height() - self.height()) // 2
-        )
+        if screen.isValid():
+            self.resize(int(screen.width() * 0.8), int(screen.height() * 0.8))
+            self.move(
+                (screen.width() - self.width()) // 2,
+                (screen.height() - self.height()) // 2
+            )
+        
+        # Maximize após a configuração inicial
+        self.showNormal()  # Garante estado inicial consistente
+        self.showMaximized()
         
         # Setup widgets
         self.central_widget = QWidget()
