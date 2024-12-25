@@ -401,3 +401,36 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
                     self.model.setData(index, self.drag_value, Qt.ItemDataRole.EditRole)
         finally:
             self.model.endResetModel()
+
+    def replace_spaces(self):
+        """Replace spaces with underscores in all editable text fields"""
+        if not self.model:
+            return
+            
+        model = self.model
+        model.beginResetModel()
+        
+        try:
+            # Get indices of editable columns (custom columns and New Name)
+            custom_col_start = 3
+            last_col = len(model.headers) - 1
+            editable_cols = list(range(custom_col_start, last_col + 1))
+            
+            # Process each editable cell
+            for row in range(model.rowCount()):
+                for col in editable_cols:
+                    index = model.index(row, col)
+                    current_text = model.data(index, Qt.ItemDataRole.DisplayRole)
+                    
+                    if current_text and isinstance(current_text, str):
+                        # Replace spaces with underscores
+                        new_text = current_text.replace(' ', '_')
+                        if new_text != current_text:
+                            model.setData(index, new_text, Qt.ItemDataRole.EditRole)
+            
+            model.endResetModel()
+            self.viewport().update()
+            
+        except Exception as e:
+            model.endResetModel()
+            raise e

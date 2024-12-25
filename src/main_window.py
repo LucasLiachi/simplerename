@@ -67,6 +67,12 @@ class MainWindow(QMainWindow):
         prepare_button.clicked.connect(self.prepare_rename)
         prepare_button.setStyleSheet("background-color: #2196F3; color: white; padding: 5px 15px;")
         
+        # Replace Spaces button
+        replace_spaces_button = QPushButton("Replace Spaces")
+        replace_spaces_button.clicked.connect(self.replace_spaces)
+        replace_spaces_button.setStyleSheet("background-color: #9C27B0; color: white; padding: 5px 15px;")
+        replace_spaces_button.setToolTip("Replace all spaces with underscores")
+        
         # Apply button (moved from existing code)
         apply_button = QPushButton("Apply Changes")
         apply_button.clicked.connect(self.apply_changes)
@@ -74,6 +80,7 @@ class MainWindow(QMainWindow):
         
         # Add buttons to layout
         button_layout.addWidget(prepare_button)
+        button_layout.addWidget(replace_spaces_button)
         button_layout.addWidget(apply_button)
         button_layout.addStretch()  # Alinha os botões à esquerda
         
@@ -126,6 +133,18 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("New names prepared from custom columns")
         except Exception as e:
             self.statusBar().showMessage(f"Error preparing names: {str(e)}")
+
+    def replace_spaces(self):
+        """Handle Replace Spaces button click"""
+        if not self.current_directory:
+            self.statusBar().showMessage("No directory selected")
+            return
+            
+        try:
+            self.spreadsheet_view.replace_spaces()
+            self.statusBar().showMessage("Spaces replaced with underscores")
+        except Exception as e:
+            self.statusBar().showMessage(f"Error replacing spaces: {str(e)}")
 
 import os
 import shutil
