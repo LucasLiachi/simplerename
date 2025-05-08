@@ -1,8 +1,10 @@
 import logging
 import sys
+import os
 from threading import Lock
 from datetime import datetime
 from pathlib import Path
+from .config_manager import get_app_dir
 
 class Logger:
     _instance = None
@@ -27,12 +29,12 @@ class Logger:
         self.logger.setLevel(logging.DEBUG)
         
         # Ensure logs directory exists
-        log_dir = Path('logs')
+        log_dir = get_app_dir() / 'logs'
         log_dir.mkdir(exist_ok=True)
         
         # File handler
         file_handler = logging.FileHandler(
-            f'logs/simplerename_{datetime.now().strftime("%Y%m%d")}.log'
+            str(log_dir / f'simplerename_{datetime.now().strftime("%Y%m%d")}.log')
         )
         file_handler.setLevel(logging.DEBUG)
         

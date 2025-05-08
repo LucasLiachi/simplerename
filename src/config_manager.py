@@ -13,22 +13,53 @@ Used by:
 import json
 import csv
 import os
+import sys
 from typing import Dict, List, Any
 from datetime import datetime
 from pathlib import Path
 
+def get_app_dir() -> Path:
+    """Get application data directory based on platform"""
+    # Check if running as bundled executable
+    if getattr(sys, 'frozen', False):
+        # For Windows, use %APPDATA%\SimpleRename
+        if os.name == 'nt':
+            return Path(os.environ.get('APPDATA', os.path.expanduser('~'))) / 'SimpleRename'
+        # For Linux, use ~/.simplerename
+        return Path.home() / '.simplerename'
+    # If running from source, use ~/.simplerename
+    return Path.home() / '.simplerename'
+
 class ConfigManager:
     def __init__(self, config_dir: str = None):
         if config_dir is None:
-            config_dir = os.path.join(str(Path.home()), '.simplerename')
+            config_dir = str(get_app_dir())
         self.config_dir = config_dir
         self.config_file = os.path.join(config_dir, 'config.json')
         self._ensure_config_dir()
+        
+        # Create logs directory if it doesn't exist
+        self.logs_dir = os.path.join(config_dir, 'logs')
+        if not os.path.exists(self.logs_dir):
+            os.makedirs(self.logs_dir)
+            
+        # Create backup directory if it doesn't exist
+        self.backup_dir = os.path.join(config_dir, 'backups')
+        if not os.path.exists(self.backup_dir):
+            os.makedirs(self.backup_dir)
 
     def _ensure_config_dir(self) -> None:
         """Create configuration directory if it doesn't exist"""
         if not os.path.exists(self.config_dir):
             os.makedirs(self.config_dir)
+            
+    def get_log_dir(self) -> str:
+        """Get the log directory path"""
+        return self.logs_dir
+        
+    def get_backup_dir(self) -> str:
+        """Get the backup directory path"""
+        return self.backup_dir
 
     def save_config(self, config: Dict[str, Any], name: str = "default") -> None:
         """Save a renaming configuration"""
@@ -96,3 +127,28 @@ class ConfigManager:
                 return list(reader)
         except Exception as e:
             raise RuntimeError(f"Failed to import rename list: {str(e)}")
+            
+    def get_troubleshooting_info(self, error_key: str) -> Dict[str, str]:
+        """Get troubleshooting information for common errors"""
+        TROUBLESHOOT_GUIDE = {
+            'missing_dll': {
+                'cause': "Required Qt DLLs may be missing from the package",
+                'solution': "Install the Microsoft Visual C++ Redistributable 2019"
+            },
+            'antivirus_block': {
+                'cause': "Antivirus software may be blocking the application",
+                'solution': "Add SimpleRename to your antivirus exceptions"
+            },
+            'file_access': {
+                'cause': "Insufficient permissions to access files",
+                'solution': "Run the application as administrator or check file permissions"
+            },
+            'config_access': {
+                'cause': "Unable to access configuration directory",
+                'solution': f"Ensure you have write permissions to {self.config_dir}"
+            }
+        }
+        return TROUBLESHOOT_GUIDE.get(error_key, {
+            'cause': "Unknown error",
+            'solution': "Please report this issue with details on GitHub"
+        })

@@ -1,84 +1,34 @@
-# Simple Rename
+# SimpleRename
 
 A lightweight file renaming tool built with Python and PyQt6.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 ## Features
 
-- Simple and efficient file renaming:
+- **Simple and efficient file renaming:**
   - Direct editing in spreadsheet-like interface
   - Format column for easy file type identification
   - Automatic extension preservation
   - Smart file name validation
   - Backup creation during renaming
   - Detailed operation feedback
-- Clean and intuitive interface:
+- **Clean and intuitive interface:**
   - Directory browser
   - File list with editable names
   - Status updates
   - Error handling
 
-# History: Building SimpleRename with Perplexity AI
-
-The development of SimpleRename, a powerful bulk file renaming application with a spreadsheet-like interface, was significantly aided by leveraging the capabilities of Perplexity AI. This AI-assisted development process unfolded as follows:
-
-## Conceptualization and Feature Definition
-
-The journey began with a series of queries to Perplexity AI about essential features for mass file renaming applications. These interactions helped refine the initial concept and establish a comprehensive feature set for SimpleRename. The AI provided insights into user-friendly interfaces, efficient renaming algorithms, and advanced functionalities that would set SimpleRename apart from existing solutions.
-
-## Project Structure and Architecture
-
-Perplexity AI was instrumental in designing a robust project structure. When asked to create a folder and file structure for a Python-based file renaming application, the AI generated a detailed layout. This structure included directories for source code (src), tests, resources, and essential root-level files such as main.py, requirements.txt, and setup.py. The suggested architecture promoted modularity and maintainability, crucial for the project's long-term success.
-
-## Component Implementation
-
-For each major component of SimpleRename, Perplexity AI offered tailored advice:
-
-1. **Spreadsheet Interface**: The AI provided guidance on implementing a grid-like interface using PyQt6, suggesting custom widgets and data models to efficiently display and edit file names.
-
-2. **File Selection**: Perplexity AI outlined methods for integrating file and folder selection, including drag-and-drop functionality, utilizing Python's built-in libraries and PyQt6's file dialog components.
-
-3. **Renaming Engine**: Detailed pseudocode and algorithmic approaches were suggested for creating a flexible renaming engine supporting various rules like prefixing, suffixing, and regular expression-based renaming.
-
-4. **Preview Functionality**: The AI proposed strategies for implementing real-time preview of renaming changes, emphasizing the importance of efficiency and user feedback.
-
-## Advanced Features
-
-Perplexity AI's suggestions were crucial in implementing advanced features:
-
-1. **Undo/Redo Functionality**: The AI outlined a command pattern implementation for tracking and reversing renaming operations.
-
-2. **Configuration Management**: Advice was provided on serializing and deserializing application settings and renaming configurations.
-
-3. **Filtering and Sorting**: The AI suggested efficient algorithms for filtering and sorting large lists of files based on various criteria.
-
-## Testing Strategy
-
-A comprehensive testing strategy was developed with Perplexity AI's assistance. This included:
-
-1. Unit tests for core functionalities like file operations and the renaming engine.
-2. Integration tests for the GUI components using PyQt's testing framework.
-3. End-to-end tests simulating user workflows.
-
-The AI provided sample test cases and best practices for test-driven development in Python.
-
-## Packaging and Distribution
-
-Finally, Perplexity AI offered guidance on packaging SimpleRename for distribution:
-
-1. Using PyInstaller to create a standalone executable for Windows.
-2. Creating an installer with NSIS (Nullsoft Scriptable Install System).
-3. Strategies for managing dependencies and ensuring compatibility across different Windows versions.
-
-Throughout the development process, Perplexity AI served as an invaluable resource, providing detailed, context-aware responses to specific implementation challenges. This AI-assisted approach significantly accelerated the development cycle and contributed to the creation of a robust, feature-rich application that effectively addresses the complexities of bulk file renaming.
-
 ## Installation
 
 ### Prerequisites
+
 - Python 3.8 or higher
 - Git
 - pip (Python package manager)
 
 You can verify your installations with:
+
 ```bash
 python --version
 git --version
@@ -86,6 +36,7 @@ pip --version
 ```
 
 ### From Source
+
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/simplerename.git
@@ -104,20 +55,82 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### Using PyInstaller
+### Creating Executable and Installer
+
+#### For Linux
+
 ```bash
-# Build standalone executable
-python setup.py
-pyinstaller simplerename.spec
+# Build standalone executable for Linux
+python build.py
 ```
-The executable will be available in the `dist` directory.
+
+The executable will be available in the `dist` directory as `SimpleRename`.
+
+#### Para Windows (Compilação via Wine)
+
+Para compilar e criar um executável Windows a partir de um ambiente Linux:
+
+```bash
+# Instale as dependências necessárias
+sudo apt-get update
+sudo apt-get install wine64
+
+# Execute o script de compilação para Windows usando Wine
+python wine_compile.py
+```
+
+O script `wine_compile.py` automatiza todo o processo:
+- Configura um ambiente Python portátil no Wine
+- Instala todas as dependências necessárias (PyInstaller, PyQt6, Pillow)
+- Compila o aplicativo SimpleRename para Windows
+- Gera o executável em `dist-windows/SimpleRename.exe`
+
+Esta opção permite gerar executáveis Windows a partir de ambientes Linux sem a necessidade de utilizar o Windows.
 
 ## Usage
 
 ### GUI Application
+
 ```bash
 # Run the application
 simplerename
+```
+
+Or run directly after installation:
+
+```bash
+# If installed with pip
+python -m simplerename
+
+# Run the main script directly
+python /path/to/simplerename/main.py
+```
+
+### Running from executable file
+
+#### Windows
+
+If you created an executable with PyInstaller:
+
+1. Navigate to the `dist` folder where the executable was created
+2. Double-click on `simplerename.exe` or
+3. Run through command prompt:
+
+   ```bash
+   cd /path/to/dist
+   simplerename.exe
+   ```
+
+#### Linux/Mac
+
+After installation:
+
+```bash
+# If installed with pip
+simplerename
+
+# If compiled with PyInstaller
+./simplerename
 ```
 
 ### Basic Operations
@@ -131,7 +144,7 @@ simplerename
 4. **Preview**: Changes are previewed before applying
 5. **Apply**: Click "Apply" to rename files
 
-### Advanced Features
+### Additional Features
 
 - **Filters**: Use the filter panel to narrow down file selection
 - **Sorting**: Click column headers or use sort menu
@@ -141,6 +154,7 @@ simplerename
 ## Testing
 
 ### Running Tests
+
 ```bash
 # Install test dependencies
 pip install -r requirements-dev.txt
@@ -159,6 +173,7 @@ pytest -k "test_rename"
 ```
 
 ### Test Organization
+
 - `tests/test_file_operations.py`: File system operation tests
 - `tests/test_gui_components.py`: GUI component tests
 - `tests/test_history_manager.py`: Undo/redo functionality tests
@@ -166,6 +181,7 @@ pytest -k "test_rename"
 - `tests/test_main.py`: Application integration tests
 
 ### Writing Tests
+
 1. Create test files in the `tests` directory
 2. Use pytest fixtures for common setup
 3. Follow the naming convention `test_*.py`
@@ -174,6 +190,7 @@ pytest -k "test_rename"
 6. Mock external dependencies when necessary
 
 ### Contributing Tests
+
 1. Ensure all new features have corresponding tests
 2. Maintain test coverage above 80%
 3. Use meaningful test names and descriptions
@@ -191,3 +208,59 @@ pytest -k "test_rename"
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details
+
+## Project Development
+
+### History: Building SimpleRename with Perplexity AI
+
+The development of SimpleRename, a powerful bulk file renaming application with a spreadsheet-like interface, was significantly aided by leveraging the capabilities of Perplexity AI. This AI-assisted development process unfolded as follows:
+
+#### Conceptualization and Feature Definition
+
+The journey began with a series of queries to Perplexity AI about essential features for mass file renaming applications. These interactions helped refine the initial concept and establish a comprehensive feature set for SimpleRename. The AI provided insights into user-friendly interfaces, efficient renaming algorithms, and advanced functionalities that would set SimpleRename apart from existing solutions.
+
+#### Project Structure and Architecture
+
+Perplexity AI was instrumental in designing a robust project structure. When asked to create a folder and file structure for a Python-based file renaming application, the AI generated a detailed layout. This structure included directories for source code (src), tests, resources, and essential root-level files such as main.py, requirements.txt, and setup.py. The suggested architecture promoted modularity and maintainability, crucial for the project's long-term success.
+
+#### Component Implementation
+
+For each major component of SimpleRename, Perplexity AI offered tailored advice:
+
+1. **Spreadsheet Interface**: The AI provided guidance on implementing a grid-like interface using PyQt6, suggesting custom widgets and data models to efficiently display and edit file names.
+
+2. **File Selection**: Perplexity AI outlined methods for integrating file and folder selection, including drag-and-drop functionality, utilizing Python's built-in libraries and PyQt6's file dialog components.
+
+3. **Renaming Engine**: Detailed pseudocode and algorithmic approaches were suggested for creating a flexible renaming engine supporting various rules like prefixing, suffixing, and regular expression-based renaming.
+
+4. **Preview Functionality**: The AI proposed strategies for implementing real-time preview of renaming changes, emphasizing the importance of efficiency and user feedback.
+
+#### Advanced Implementation
+
+Perplexity AI's suggestions were crucial in implementing advanced features:
+
+1. **Undo/Redo Functionality**: The AI outlined a command pattern implementation for tracking and reversing renaming operations.
+
+2. **Configuration Management**: Advice was provided on serializing and deserializing application settings and renaming configurations.
+
+3. **Filtering and Sorting**: The AI suggested efficient algorithms for filtering and sorting large lists of files based on various criteria.
+
+#### Testing Strategy
+
+A comprehensive testing strategy was developed with Perplexity AI's assistance. This included:
+
+1. Unit tests for core functionalities like file operations and the renaming engine.
+2. Integration tests for the GUI components using PyQt's testing framework.
+3. End-to-end tests simulating user workflows.
+
+The AI provided sample test cases and best practices for test-driven development in Python.
+
+#### Packaging and Distribution
+
+Finally, Perplexity AI offered guidance on packaging SimpleRename for distribution:
+
+1. Using PyInstaller to create a standalone executable for Windows.
+2. Creating an installer with NSIS (Nullsoft Scriptable Install System).
+3. Strategies for managing dependencies and ensuring compatibility across different Windows versions.
+
+Throughout the development process, Perplexity AI served as an invaluable resource, providing detailed, context-aware responses to specific implementation challenges. This AI-assisted approach significantly accelerated the development cycle and contributed to the creation of a robust, feature-rich application that effectively addresses the complexities of bulk file renaming.
