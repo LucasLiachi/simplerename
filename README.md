@@ -1,7 +1,5 @@
 # SimpleRename
 
-Ajust
-
 A lightweight file renaming tool built with Python and PyQt6.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
