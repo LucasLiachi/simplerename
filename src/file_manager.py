@@ -193,7 +193,7 @@ class DualBandTableModel(QAbstractTableModel):
             return COLOR_AMBER
         return COLOR_WHITE
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         """Colunas da faixa azul e Preview sao read-only; faixa verde e editavel."""
         col = index.column()
         if col in BLUE_COLS or col == PREVIEW_COL:
