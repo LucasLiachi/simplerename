@@ -1,7 +1,7 @@
 # Feature: Extração Automática de Metadados de PDF
 **ID:** FEATURE-002
 **Epic:** EPIC-001
-**Status:** Draft
+**Status:** In Progress
 **Priority:** P0 (blocker)
 **Author:** PP-Planner
 **Created:** 2026-06-25
