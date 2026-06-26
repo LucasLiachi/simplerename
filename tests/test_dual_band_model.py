@@ -1,6 +1,8 @@
 """Testes para DualBandTableModel e FileRow."""
 import pytest
-from src.file_manager import DualBandTableModel, FileRow, COL_PREVIEW, COL_NEW_NAME
+from src.file_manager import (DualBandTableModel, FileRow, COL_PREVIEW, COL_NEW_NAME,
+                              COL_NEW_ISBN, COL_NEW_CLASSIF)
+from PyQt6.QtCore import Qt, QAbstractTableModel
 from src.pdf_metadata_extractor import BookMetadata, MetadataQuality
 
 
@@ -54,9 +56,9 @@ class TestDualBandTableModel:
         assert model.rowCount() == 1
 
     def test_column_count(self):
-        """columnCount deve ser 14 (fixo)."""
+        """columnCount deve ser 16 (fixo)."""
         model = self._model_with_files()
-        assert model.columnCount() == 14
+        assert model.columnCount() == 16
 
     def test_empty_model_row_count(self):
         """Model sem arquivos deve ter rowCount == 0."""
@@ -208,3 +210,177 @@ class TestDualBandTableModel:
         model.load_files([{"path": "/dir/meu_livro.pdf", "name": "meu_livro.pdf", "extension": ".pdf"}])
         assert model.rows[0].current_filename == "meu_livro"
         assert model.rows[0].file_extension == ".pdf"
+
+
+class TestNewIsbnColumn:
+    """Testes para a coluna Novo ISBN (índice 13) na faixa verde."""
+
+    def _make_model(self):
+        model = DualBandTableModel.__new__(DualBandTableModel)
+        QAbstractTableModel.__init__(model)
+        model.rows = [FileRow(current_filename="Dom Casmurro", file_extension=".pdf")]
+        return model
+
+    def test_header_novo_isbn_at_index_13(self):
+        """Cabeçalho da coluna 13 deve ser 'Novo ISBN'."""
+        model = self._make_model()
+        header = model.headerData(13, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Novo ISBN"
+
+    def test_classificacao_at_index_14(self):
+        """Após FEATURE-011, coluna 14 é 'Classificação' (Preview passou para 15)."""
+        model = self._make_model()
+        header = model.headerData(14, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Classificação"
+
+    def test_novo_isbn_is_editable(self):
+        """Coluna 13 (Novo ISBN) deve ser editável."""
+        model = self._make_model()
+        idx = model.index(0, 13)
+        assert Qt.ItemFlag.ItemIsEditable in model.flags(idx)
+
+    def test_set_valid_isbn_normalizes(self):
+        """ISBN com hífens deve ser normalizado para 13 dígitos sem hífens."""
+        model = self._make_model()
+        idx = model.index(0, 13)
+        result = model.setData(idx, "978-85-209-1718-5")
+        assert result is True
+        assert model.rows[0].new_isbn == "9788520917185"
+
+    def test_set_invalid_isbn_rejected(self):
+        """ISBN que não começa com 978/979 deve ser rejeitado."""
+        model = self._make_model()
+        idx = model.index(0, 13)
+        result = model.setData(idx, "1234567890123")
+        assert result is False
+        assert model.rows[0].new_isbn is None
+
+    def test_set_isbn_marks_confirmed(self):
+        """Edição manual deve marcar campo como confirmado (verde)."""
+        model = self._make_model()
+        idx = model.index(0, 13)
+        model.setData(idx, "9788520917185")
+        assert model.rows[0].field_confirmed.get("new_isbn") is True
+
+    def test_set_isbn_marks_origin_manual(self):
+        """Edição manual deve marcar origem com lápis (✎)."""
+        model = self._make_model()
+        idx = model.index(0, 13)
+        model.setData(idx, "9788520917185")
+        assert model.rows[0].field_origins.get("new_isbn") == "✎"
+
+    def test_confirm_row_includes_isbn(self):
+        """confirm_row() deve confirmar new_isbn se presente."""
+        model = self._make_model()
+        model.rows[0].new_isbn = "9788520917185"
+        model.rows[0].field_confirmed["new_isbn"] = False
+        model.confirm_row(0)
+        assert model.rows[0].field_confirmed["new_isbn"] is True
+
+    def test_clear_proposal_removes_isbn(self):
+        """clear_proposal() deve apagar new_isbn e suas entradas de controle."""
+        model = self._make_model()
+        model.rows[0].new_isbn = "9788520917185"
+        model.rows[0].field_confirmed["new_isbn"] = True
+        model.clear_proposal(0)
+        assert model.rows[0].new_isbn is None
+        assert "new_isbn" not in model.rows[0].field_confirmed
+
+    def test_set_proposal_populates_isbn(self):
+        """set_proposal() deve preencher new_isbn a partir de LookupResult.isbn13."""
+        from src.metadata_lookup import LookupResult, LookupSource
+        model = self._make_model()
+        result = LookupResult(
+            title="Dom Casmurro", authors=["Machado de Assis"],
+            isbn13="9788535902778", year="1899", publisher="Globo",
+            confidence=0.9, source=LookupSource.OPEN_LIBRARY,
+        )
+        model.set_proposal(0, result, origin="OL")
+        assert model.rows[0].new_isbn == "9788535902778"
+        assert model.rows[0].field_origins["new_isbn"] == "OL"
+        assert model.rows[0].field_confirmed.get("new_isbn") is False
+
+
+class TestClassificacaoColumn:
+    """Testes para a coluna Classificação (índice 14) na faixa verde."""
+
+    def _make_model(self):
+        model = DualBandTableModel.__new__(DualBandTableModel)
+        QAbstractTableModel.__init__(model)
+        model.rows = [FileRow(current_filename="O Estrangeiro", file_extension=".epub")]
+        return model
+
+    def test_header_classificacao_at_index_14(self):
+        """Cabeçalho da coluna 14 deve ser 'Classificação'."""
+        model = self._make_model()
+        header = model.headerData(14, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Classificação"
+
+    def test_preview_shifted_to_index_15(self):
+        """Cabeçalho da coluna 15 deve ser 'Preview'."""
+        model = self._make_model()
+        header = model.headerData(15, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Preview"
+
+    def test_classificacao_is_editable(self):
+        """Coluna 14 (Classificação) deve ser editável."""
+        model = self._make_model()
+        idx = model.index(0, 14)
+        assert Qt.ItemFlag.ItemIsEditable in model.flags(idx)
+
+    def test_set_classificacao_manual(self):
+        """Edição manual deve aceitar qualquer texto e marcar origem '✎'."""
+        model = self._make_model()
+        idx = model.index(0, 14)
+        result = model.setData(idx, "869 - Literatura Portuguesa e Brasileira")
+        assert result is True
+        assert model.rows[0].new_classification == "869 - Literatura Portuguesa e Brasileira"
+        assert model.rows[0].field_origins["new_classification"] == "✎"
+        assert model.rows[0].field_confirmed["new_classification"] is True
+
+    def test_confirm_row_includes_classification(self):
+        """confirm_row() deve confirmar new_classification."""
+        model = self._make_model()
+        model.rows[0].new_classification = "869 - Literatura Portuguesa e Brasileira"
+        model.rows[0].field_confirmed["new_classification"] = False
+        model.confirm_row(0)
+        assert model.rows[0].field_confirmed["new_classification"] is True
+
+    def test_clear_proposal_removes_classification(self):
+        """clear_proposal() deve apagar new_classification."""
+        model = self._make_model()
+        model.rows[0].new_classification = "869 - Literatura Portuguesa e Brasileira"
+        model.rows[0].field_confirmed["new_classification"] = True
+        model.clear_proposal(0)
+        assert model.rows[0].new_classification is None
+        assert "new_classification" not in model.rows[0].field_confirmed
+
+    def test_set_proposal_populates_classification(self):
+        """set_proposal() com parâmetro classification deve preencher o campo."""
+        from src.metadata_lookup import LookupResult, LookupSource
+        model = self._make_model()
+        result = LookupResult(
+            title="O Estrangeiro", authors=["Albert Camus"],
+            isbn13="9788520917185", year="1990", publisher="Record",
+            categories=["Fiction"],
+            confidence=0.9, source=LookupSource.OPEN_LIBRARY,
+        )
+        model.set_proposal(
+            0, result,
+            origin="OL",
+            classification="869 - Literatura Portuguesa e Brasileira",
+        )
+        assert model.rows[0].new_classification == "869 - Literatura Portuguesa e Brasileira"
+        assert model.rows[0].field_origins["new_classification"] == "OL"
+        assert model.rows[0].field_confirmed.get("new_classification") is False
+
+    def test_display_empty_when_not_set(self):
+        """Coluna deve exibir string vazia quando new_classification é None."""
+        model = self._make_model()
+        idx = model.index(0, 14)
+        value = model.data(idx, Qt.ItemDataRole.DisplayRole)
+        assert value == ""

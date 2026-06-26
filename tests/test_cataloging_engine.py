@@ -55,6 +55,21 @@ class TestCategoryToCdd:
         code, _ = category_to_cdd(["COMPUTERS"])
         assert code == "000"
 
+    @pytest.mark.parametrize("categories,expected_code", [
+        (["Fiction"],                           "869"),
+        (["Literary Collections"],              "800"),
+        (["Psychology"],                        "150"),
+        (["Computers", "Information Science"],  "000"),
+        (["Management"],                        "650"),
+        (["History of Brazil"],                 "981"),
+        ([],                                    "000"),
+        (["unknown category xyz"],              "000"),
+    ])
+    def test_category_to_cdd_mapping(self, categories, expected_code):
+        """Mapeamento de categorias da busca para códigos CDD."""
+        code, _label = category_to_cdd(categories)
+        assert code == expected_code
+
 
 class TestApplyConvention:
     def _meta(self, **kwargs):

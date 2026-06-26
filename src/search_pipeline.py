@@ -162,22 +162,27 @@ class SearchPipeline:
 
     def run(self, row: FileRow) -> Optional[LookupResult]:
         """
-        Tenta as 4 estratégias em ordem de confiança.
+        Tenta as 5 estratégias em ordem de confiança crescente de risco.
+
+        Estratégias 1-2 usam ISBN direto (alta confiança).
+        Estratégias 3-4 usam texto → ISBN → lookup preciso (via _lookup_by_title_then_isbn).
+        Estratégia 5 tenta o título sozinho, sem autor, como último recurso.
 
         Args:
             row: FileRow a processar.
 
         Returns:
-            Melhor LookupResult com confidence >= 0.5, ou None.
+            Melhor LookupResult com confidence >= 0.4, ou None.
         """
         for strategy in (
             self._strategy_embedded_isbn,
             self._strategy_filename_isbn,
             self._strategy_embedded_title_author,
             self._strategy_filename_title_author,
+            self._strategy_title_only,
         ):
             result = strategy(row)
-            if result and result.confidence >= 0.5:
+            if result and result.confidence >= 0.4:
                 return result
         return None
 
@@ -210,11 +215,27 @@ class SearchPipeline:
         """Estratégia 4: Título + Autor inferidos do nome do arquivo."""
         parsed = _parse_filename(row.current_filename)
         title  = parsed.get("title", "")
+        author = parsed.get("author", "")
+        if len(title) < 3 or not author:
+            return None
+        results = self.lookup.lookup(BookMetadata(title=title, author=author))
+        return results[0] if results else None
+
+    def _strategy_title_only(self, row: FileRow) -> Optional[LookupResult]:
+        """
+        Estratégia 5: busca apenas pelo título (sem autor).
+
+        Acionada quando as estratégias 3 e 4 falham — por exemplo, quando o
+        arquivo não tem metadados embutidos e o nome não segue nenhum padrão
+        com autor reconhecível. Usa o título extraído do PDF ou do nome do arquivo.
+        """
+        title = (row.current_title or "").strip()
+        if len(title) < 3:
+            parsed = _parse_filename(row.current_filename)
+            title  = parsed.get("title", "").strip()
         if len(title) < 3:
             return None
-        results = self.lookup.lookup(BookMetadata(
-            title=title, author=parsed.get("author", "")
-        ))
+        results = self.lookup.lookup(BookMetadata(title=title, author=""))
         return results[0] if results else None
 
     def apply_result(self, row: FileRow, result: LookupResult) -> FileRow:
@@ -234,6 +255,7 @@ class SearchPipeline:
         row.new_author    = _normalize_author(getattr(result, "authors", []) or []) or None
         row.new_year      = result.year
         row.new_publisher = _validate_publisher(result.publisher)
+        row.new_isbn      = result.isbn13 or None
 
         # Gerar new_filename via CatalogingEngine
         meta = BookMetadata(
@@ -241,14 +263,22 @@ class SearchPipeline:
             year=row.new_year,   publisher=row.new_publisher,
             isbn=result.isbn13,
         )
-        suggestion    = self.cataloging.suggest(meta, original_path=row.original_path)
+        categories: list = getattr(result, "categories", []) or []
+        suggestion  = self.cataloging.suggest(
+            meta,
+            original_path=row.original_path,
+            categories=categories,
+        )
         filename_full = suggestion.suggested_filename  # ex: "ORWELL, George - 1984 (1949).pdf"
-        row.new_filename = filename_full.rsplit(".", 1)[0] if "." in filename_full else filename_full
+        row.new_filename       = filename_full.rsplit(".", 1)[0] if "." in filename_full else filename_full
+        row.new_classification = suggestion.folder_path
 
         # Badge de origem e estado âmbar (não confirmado)
         source = result.source.value
         badge  = "OL" if "library" in source else "GB" if "google" in source else "cache"
-        for key in ("new_filename", "new_title", "new_author", "new_year", "new_publisher"):
+        for key in ("new_filename", "new_title", "new_author",
+                    "new_year", "new_publisher", "new_isbn",
+                    "new_classification"):
             if getattr(row, key):
                 row.field_origins[key]   = badge
                 row.field_confirmed[key] = False

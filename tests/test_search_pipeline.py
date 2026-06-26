@@ -227,12 +227,20 @@ class TestSearchPipeline:
         assert result is None
 
     def test_low_confidence_skipped(self):
-        """Resultado com confidence < 0.5 deve ser ignorado."""
+        """Resultado com confidence < 0.4 deve ser ignorado."""
         pipeline, lookup, _ = _make_pipeline()
         lookup.lookup.return_value = [_make_result(confidence=0.3)]
         row = FileRow(current_isbn="9788535902778", current_filename="book")
         result = pipeline.run(row)
         assert result is None
+
+    def test_borderline_confidence_accepted(self):
+        """Resultado com confidence == 0.4 deve ser aceito (limiar exato)."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result(confidence=0.4)]
+        row = FileRow(current_isbn="9788535902778", current_filename="book")
+        result = pipeline.run(row)
+        assert result is not None
 
     def test_apply_result_populates_green_band(self):
         """apply_result deve preencher a faixa verde da FileRow."""
@@ -264,6 +272,72 @@ class TestSearchPipeline:
         pipeline.apply_result(row, _make_result(source=LookupSource.GOOGLE_BOOKS))
         assert row.field_origins.get("new_title") == "GB"
 
+    def test_apply_result_passes_categories_to_cataloging(self):
+        """apply_result deve passar result.categories ao cataloging.suggest()."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        _, kwargs = catalog.suggest.call_args
+        assert kwargs.get("categories") == ["Fiction"]
+
+    def test_apply_result_populates_new_classification(self):
+        """apply_result deve preencher new_classification com folder_path."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        assert row.new_classification == "869 - Literatura Portuguesa e Brasileira"
+        assert row.field_confirmed.get("new_classification") is False
+
+    def test_apply_result_no_categories_gives_default_classification(self):
+        """Sem categories, classificação deve ser o valor retornado pelo cataloging mock."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="000 - Sem Classificacao",
+        )
+        row    = FileRow(current_filename="O Estrangeiro", file_extension=".epub")
+        result = _make_result(categories=[])
+        pipeline.apply_result(row, result)
+        assert row.new_classification == "000 - Sem Classificacao"
+
+    def test_apply_result_classification_has_amber_badge(self):
+        """new_classification preenchida deve ter field_confirmed=False e badge de origem."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro.epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(source=LookupSource.OPEN_LIBRARY, categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        assert row.field_confirmed.get("new_classification") is False
+        assert row.field_origins.get("new_classification") == "OL"
+
+    def test_apply_result_populates_new_isbn(self):
+        """apply_result deve preencher new_isbn com result.isbn13."""
+        pipeline, _, _ = _make_pipeline()
+        row = FileRow(current_filename="book", file_extension=".pdf")
+        pipeline.apply_result(row, _make_result(isbn13="9788535902778"))
+        assert row.new_isbn == "9788535902778"
+        assert row.field_confirmed.get("new_isbn") is False
+
+    def test_apply_result_no_isbn_leaves_none(self):
+        """apply_result sem isbn13 deve deixar new_isbn como None."""
+        pipeline, _, _ = _make_pipeline()
+        row = FileRow(current_filename="book", file_extension=".pdf")
+        pipeline.apply_result(row, _make_result(isbn13=None))
+        assert row.new_isbn is None
+
     def test_apply_result_sets_new_filename(self):
         """apply_result deve preencher new_filename via CatalogingEngine."""
         pipeline, _, catalog = _make_pipeline()
@@ -284,3 +358,67 @@ class TestSearchPipeline:
         lookup.lookup.return_value = []
         result = pipeline.run(row)
         assert result is None
+
+
+class TestStrategyTitleOnly:
+    """Testes para SearchPipeline._strategy_title_only()."""
+
+    def test_uses_current_title_when_available(self):
+        """Deve usar current_title do PDF quando disponível."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result()]
+        row = FileRow(
+            current_filename="arquivo_sem_padrao",
+            current_title="O Estrangeiro",
+        )
+        result = pipeline._strategy_title_only(row)
+        assert result is not None
+        lookup.lookup.assert_called_once()
+        meta_used = lookup.lookup.call_args[0][0]
+        assert meta_used.title == "O Estrangeiro"
+        assert meta_used.author == ""
+
+    def test_falls_back_to_filename_title_when_no_current_title(self):
+        """Sem current_title, deve extrair título do nome do arquivo."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result()]
+        row = FileRow(current_filename="O Estrangeiro - Albert Camus")
+        result = pipeline._strategy_title_only(row)
+        assert result is not None
+        meta_used = lookup.lookup.call_args[0][0]
+        assert meta_used.title == "O Estrangeiro"
+        assert meta_used.author == ""
+
+    def test_returns_none_when_title_too_short(self):
+        """Título com menos de 3 caracteres deve retornar None."""
+        pipeline, lookup, _ = _make_pipeline()
+        row = FileRow(current_filename="ab", current_title="ab")
+        result = pipeline._strategy_title_only(row)
+        assert result is None
+        lookup.lookup.assert_not_called()
+
+    def test_run_reaches_strategy5_when_no_author_in_filename(self):
+        """
+        Pipeline deve usar título sozinho quando nenhuma estratégia anterior encontra resultado.
+        """
+        pipeline, lookup, _ = _make_pipeline()
+
+        def side_effect(meta):
+            if meta.author == "" and meta.title == "Solaris":
+                return [_make_result(title="Solaris")]
+            return []
+        lookup.lookup.side_effect = side_effect
+
+        row = FileRow(current_filename="Solaris", current_title="Solaris")
+        result = pipeline.run(row)
+        assert result is not None
+        assert result.title == "Solaris"
+
+    def test_strategy5_not_called_if_strategy4_succeeds(self):
+        """Estratégia 5 não deve ser chamada se a estratégia 4 já retornou resultado."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result(confidence=0.6)]
+        row = FileRow(current_filename="Dom Casmurro - Machado de Assis")
+        with patch.object(pipeline, "_strategy_title_only") as mock_s5:
+            pipeline.run(row)
+        mock_s5.assert_not_called()

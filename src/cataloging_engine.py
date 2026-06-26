@@ -64,11 +64,16 @@ _DEFAULT_CDD = ("000", "Sem Classificacao")
 
 
 def category_to_cdd(categories: list[str]) -> tuple[str, str]:
-    """Mapeia categorias para CDD. Retorna primeiro match ou _DEFAULT_CDD."""
+    """Mapeia categorias para CDD. Prefere keywords mais longas (mais específicas)."""
     for cat in categories:
+        best: tuple[str, str] | None = None
+        best_len = 0
         for keyword, cdd in CDD_MAP.items():
-            if keyword.lower() in cat.lower():
-                return cdd
+            if keyword.lower() in cat.lower() and len(keyword) > best_len:
+                best = cdd
+                best_len = len(keyword)
+        if best:
+            return best
     return _DEFAULT_CDD
 
 
