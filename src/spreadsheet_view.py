@@ -13,7 +13,7 @@ Dependencies:
 import os
 from PyQt6.QtWidgets import QTableView, QHeaderView, QInputDialog
 from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtGui import QPainter, QColor, QFont
+from PyQt6.QtGui import QPainter, QColor, QFont, QPalette
 from .file_manager import DualBandTableModel
 from .fill_handle import DraggableTableView
 from typing import Dict, List
@@ -25,9 +25,9 @@ class GroupedHeaderView(QHeaderView):
 
     GROUP_HEIGHT = 20
     GROUPS = [
-        ("Estado Atual",        list(range(0, 8)),   QColor(181, 212, 244)),
-        ("Proposta de Mudanca", list(range(8, 13)),  QColor(159, 225, 203)),
-        ("",                    [13],                QColor(220, 220, 220)),
+        ("Estado Atual",        list(range(0, 8))),
+        ("Proposta de Mudanca", list(range(8, 13))),
+        ("",                    [13]),
     ]
 
     def __init__(self, parent=None):
@@ -38,17 +38,28 @@ class GroupedHeaderView(QHeaderView):
     def paintSection(self, painter: QPainter, rect: QRect, logical_index: int) -> None:
         """Pinta a secao: nome da coluna na metade inferior e rotulo do grupo na metade superior."""
         painter.save()
+        is_dark = self.palette().color(QPalette.ColorRole.Window).lightness() < 128
+        GROUP_BG = {
+            "Estado Atual":        QColor(25, 55, 100)  if is_dark else QColor(181, 212, 244),
+            "Proposta de Mudanca": QColor(20, 65, 30)   if is_dark else QColor(159, 225, 203),
+            "":                    QColor(60, 60, 60)   if is_dark else QColor(220, 220, 220),
+        }
+        GROUP_FG = {
+            "Estado Atual":        QColor(180, 210, 255) if is_dark else QColor(12, 68, 124),
+            "Proposta de Mudanca": QColor(160, 230, 180) if is_dark else QColor(8, 80, 65),
+            "":                    QColor(200, 200, 200) if is_dark else QColor(80, 80, 80),
+        }
         # Linha inferior: nome da coluna (comportamento padrao)
         col_rect = QRect(rect.x(), rect.y() + self.GROUP_HEIGHT,
                          rect.width(), rect.height() - self.GROUP_HEIGHT)
         super().paintSection(painter, col_rect, logical_index)
         # Linha superior: rotulo do grupo (pintado apenas para a primeira coluna do grupo)
-        for label, cols, color in self.GROUPS:
+        for label, cols in self.GROUPS:
             if logical_index == cols[0]:
                 total_w = sum(self.sectionSize(c) for c in cols)
                 grp_rect = QRect(rect.x(), rect.y(), total_w, self.GROUP_HEIGHT)
-                painter.fillRect(grp_rect, color)
-                painter.setPen(Qt.GlobalColor.black)
+                painter.fillRect(grp_rect, GROUP_BG[label])
+                painter.setPen(GROUP_FG[label])
                 font = QFont()
                 font.setBold(True)
                 font.setPointSize(8)

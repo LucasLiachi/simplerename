@@ -25,14 +25,21 @@ from .pdf_metadata_extractor import BookMetadata
 # ---------------------------------------------------------------------------
 
 FILENAME_PATTERNS = [
-    # ISBN - Título (mais específico — deve vir primeiro para não ser confundido com Autor - Título)
-    r'^(?P<isbn>97[89]\d{10})\s*[-_]\s*(?P<title>.+)$',
-    # SOBRENOME, Nome - Título (Ano)
-    r'^(?P<author>[A-Z][^-]{2,}),\s+(?P<first>[^-]+)\s+-\s+(?P<title>.+?)(?:\s+\((?P<year>\d{4})\))?$',
-    # Autor - Título (Ano)
-    r'^(?P<author>[^-]+?)\s+-\s+(?P<title>.+?)(?:\s+\((?P<year>\d{4})\))?$',
-    # Título (Ano)
-    r'^(?P<title>.+?)\s+\((?P<year>\d{4})\)$',
+    # 1. ISBN no início do nome
+    (r'^(?P<isbn>97[89]\d{10})\s*[-_\s]\s*(?P<title>.+)$',
+     ["isbn", "title"]),
+    # 2. Título - Autor (Ano)   ← padrão mais comum na biblioteca
+    (r'^(?P<title>.+?)\s+-\s+(?P<author>(?!\d)[^-]{2,}?)(?:\s+\((?P<year>\d{4})\))?$',
+     ["title", "author", "year"]),
+    # 3. SOBRENOME, Nome - Título (Ano)   ← convenção ABNT
+    (r'^(?P<last>[A-ZÀ-Ý][A-ZÀ-Ýa-zà-ý]+),\s+(?P<first>[^-]{2,}?)'
+     r'\s+-\s+(?P<title>.+?)(?:\s+\((?P<year>\d{4})\))?$',
+     ["author_last_first", "title", "year"]),
+    # 4. Título (Ano)
+    (r'^(?P<title>.+?)\s+\((?P<year>\d{4})\)$',
+     ["title", "year"]),
+    # 5. Fallback
+    (r'^(?P<title>.+)$', ["title"]),
 ]
 
 
@@ -46,15 +53,15 @@ def _parse_filename(stem: str) -> dict:
     Returns:
         Dict com chaves opcionais: title, author, year, isbn.
     """
-    for pattern in FILENAME_PATTERNS:
+    for pattern, fields in FILENAME_PATTERNS:
         m = re.match(pattern, stem.strip(), re.IGNORECASE)
         if m:
             result = {k: v for k, v in m.groupdict().items() if v}
-            # Reconstruir autor completo se padrão SOBRENOME, Nome capturou first
-            if "first" in result and "author" in result:
-                result["author"] = f"{result['author']}, {result.pop('first')}"
-            else:
-                result.pop("first", None)
+            if "author_last_first" in fields:
+                last = result.pop("last", "")
+                first = result.pop("first", "")
+                if last:
+                    result["author"] = f"{last}, {first}" if first else last
             return result
     return {"title": stem}
 

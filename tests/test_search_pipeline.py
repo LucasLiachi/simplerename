@@ -40,10 +40,11 @@ class TestParseFilename:
         assert "title" in result
         assert "1984" in result["title"]
 
-    def test_autor_titulo_pattern(self):
-        """Padrão Autor - Título deve extrair título corretamente."""
+    def test_titulo_autor_pattern(self):
+        """Padrão Título - Autor deve extrair título e autor corretamente."""
         result = _parse_filename("Machado de Assis - Dom Casmurro")
-        assert result.get("title") == "Dom Casmurro"
+        assert result.get("title") == "Machado de Assis"
+        assert result.get("author") == "Dom Casmurro"
 
     def test_titulo_ano_pattern(self):
         """Padrão Título (Ano) deve extrair título e ano."""
@@ -67,6 +68,26 @@ class TestParseFilename:
         assert "author" in result
         assert "ORWELL" in result["author"]
         assert "George" in result["author"]
+
+    @pytest.mark.parametrize("stem,expected", [
+        ("O Estrangeiro - Albert Camus",
+         {"title": "O Estrangeiro", "author": "Albert Camus"}),
+        ("O Poder Do Agora - Eckhart Tolle",
+         {"title": "O Poder Do Agora", "author": "Eckhart Tolle"}),
+        ("REED, John - 10 dias que abalaram o mundo (2006)",
+         {"author": "REED, John", "title": "10 dias que abalaram o mundo", "year": "2006"}),
+        ("A Caminho da Luz - (Emmanuel) Francisco Candido Xavier",
+         {"title": "A Caminho da Luz", "author": "(Emmanuel) Francisco Candido Xavier"}),
+        ("9788535902778 - Dom Casmurro",
+         {"isbn": "9788535902778", "title": "Dom Casmurro"}),
+        ("O Poder do Agora (2002)",
+         {"title": "O Poder do Agora", "year": "2002"}),
+    ])
+    def test_parse_filename(self, stem, expected):
+        """Casos parametrizados FEATURE-008: parser deve extrair campos conforme padrão."""
+        result = _parse_filename(stem)
+        for key, value in expected.items():
+            assert result.get(key) == value, f"{stem!r}: esperava {key}={value!r}, obteve {result}"
 
 
 class TestNormalizeTitle:

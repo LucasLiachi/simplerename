@@ -17,7 +17,8 @@ import logging
 from dataclasses import dataclass, field as dc_field
 from typing import List, Dict, Any, Optional
 from PyQt6.QtCore import Qt, QAbstractTableModel, QModelIndex
-from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtGui import QColor, QBrush, QPalette
+from PyQt6.QtWidgets import QApplication
 from datetime import datetime
 from .pdf_metadata_extractor import MetadataQuality
 
@@ -150,7 +151,7 @@ class DualBandTableModel(QAbstractTableModel):
             return self._display(row, col)
 
         if role == Qt.ItemDataRole.BackgroundRole:
-            return QBrush(self._bg_color(row, col))
+            return QBrush(self._cell_background(col, row))
 
         if role == Qt.ItemDataRole.ToolTipRole and col in GREEN_COLS:
             key = GREEN_COL_KEYS[col]
@@ -178,20 +179,30 @@ class DualBandTableModel(QAbstractTableModel):
         if col == COL_PREVIEW:      return row.preview
         return None
 
-    def _bg_color(self, row: FileRow, col: int) -> QColor:
-        """Retorna a cor de fundo da celula conforme faixa e estado."""
+    def _cell_background(self, col: int, row_data: "FileRow") -> QColor:
+        """Retorna a cor de fundo da célula com suporte a dark/light mode.
+
+        Args:
+            col: Índice da coluna.
+            row_data: FileRow com dados da linha.
+        """
+        is_dark = (QApplication.palette()
+                   .color(QPalette.ColorRole.Window)
+                   .lightness() < 128)
         if col in BLUE_COLS:
-            return COLOR_BLUE_BG
+            return QColor(30, 60, 100) if is_dark else QColor(210, 230, 248)
         if col == PREVIEW_COL:
-            return COLOR_PREVIEW
-        key = GREEN_COL_KEYS.get(col)
-        if not key:
-            return COLOR_WHITE
-        if row.field_confirmed.get(key):
-            return COLOR_GREEN_OK
-        if getattr(row, key) is not None:
-            return COLOR_AMBER
-        return COLOR_WHITE
+            return QColor(50, 50, 60) if is_dark else QColor(235, 235, 235)
+        field_key = GREEN_COL_KEYS.get(col)
+        if not field_key:
+            return QColor()
+        value     = getattr(row_data, field_key, None)
+        confirmed = row_data.field_confirmed.get(field_key, False)
+        if confirmed and value:
+            return QColor(20, 70, 30)  if is_dark else QColor(200, 235, 200)
+        if value is not None:
+            return QColor(80, 55, 10)  if is_dark else QColor(255, 235, 180)
+        return QColor(45, 45, 50)      if is_dark else QColor(255, 255, 255)
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
         """Colunas da faixa azul e Preview sao read-only; faixa verde e editavel."""
@@ -239,6 +250,24 @@ class DualBandTableModel(QAbstractTableModel):
             )
             self.rows.append(row)
         self.endResetModel()
+
+    def update_row(self, row_idx: int, new_row: "FileRow") -> None:
+        """Substitui FileRow na posição e força redesenho da linha inteira.
+
+        Args:
+            row_idx: Índice da linha a substituir.
+            new_row: Nova FileRow com dados atualizados.
+        """
+        if 0 <= row_idx < len(self.rows):
+            self.rows[row_idx] = new_row
+            tl = self.index(row_idx, 0)
+            br = self.index(row_idx, self.columnCount(None) - 1)
+            self.dataChanged.emit(
+                tl, br,
+                [Qt.ItemDataRole.DisplayRole,
+                 Qt.ItemDataRole.BackgroundRole,
+                 Qt.ItemDataRole.DecorationRole]
+            )
 
     def set_metadata(self, row_idx: int, meta: object) -> None:
         """Atualiza faixa azul com BookMetadata extraido.
