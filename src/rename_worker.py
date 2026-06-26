@@ -48,3 +48,36 @@ class MetadataWorker(QThread):
     def cancel(self) -> None:
         """Sinaliza ao worker para interromper o processamento no próximo arquivo."""
         self._cancelled = True
+
+
+class LookupWorker(QThread):
+    """Busca metadados online para múltiplas linhas em background."""
+
+    result_ready = pyqtSignal(int, list)   # (row_index, List[LookupResult])
+    finished     = pyqtSignal(int)
+
+    def __init__(self, rows: list, service: object):
+        """
+        Inicializa o worker com as linhas a processar e o serviço de lookup.
+
+        Args:
+            rows: Lista de (row_index, BookMetadata)
+            service: MetadataLookupService instanciado
+        """
+        super().__init__()
+        self._rows      = rows
+        self._service   = service
+        self._cancelled = False
+
+    def run(self) -> None:
+        """Processa cada linha em sequência, emitindo sinais por resultado."""
+        for row, meta in self._rows:
+            if self._cancelled:
+                break
+            results = self._service.lookup(meta)
+            self.result_ready.emit(row, results)
+        self.finished.emit(len(self._rows))
+
+    def cancel(self) -> None:
+        """Sinaliza ao worker para interromper o processamento na próxima iteração."""
+        self._cancelled = True

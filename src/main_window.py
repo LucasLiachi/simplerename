@@ -88,10 +88,22 @@ class MainWindow(QMainWindow):
         apply_button.clicked.connect(self.apply_changes)
         apply_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px 15px;")
 
+        # Lookup Online button
+        self.lookup_btn = QPushButton("\U0001f50d Buscar Online")
+        self.lookup_btn.setToolTip("Buscar metadados online para a linha selecionada")
+        self.lookup_btn.clicked.connect(self._lookup_selected)
+
+        # Lookup All button
+        self.lookup_all_btn = QPushButton("\U0001f50d Buscar Todos")
+        self.lookup_all_btn.setToolTip("Buscar metadados online para todas as linhas sem dados completos")
+        self.lookup_all_btn.clicked.connect(self._lookup_all_incomplete)
+
         # Add buttons to layout
         button_layout.addWidget(prepare_button)
         button_layout.addWidget(replace_spaces_button)
         button_layout.addWidget(apply_button)
+        button_layout.addWidget(self.lookup_btn)
+        button_layout.addWidget(self.lookup_all_btn)
         button_layout.addStretch()  # Alinha os botões à esquerda
 
         # Layout assembly (modificado)
@@ -216,6 +228,61 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Spaces replaced with underscores")
         except Exception as e:
             self.statusBar().showMessage(f"Error replacing spaces: {str(e)}")
+
+    def _get_lookup_service(self):
+        """Instancia MetadataLookupService (lazy, reutilizado entre chamadas)."""
+        if not hasattr(self, '_lookup_service'):
+            from .metadata_lookup import MetadataLookupService
+            self._lookup_service = MetadataLookupService()
+        return self._lookup_service
+
+    def _lookup_selected(self) -> None:
+        """Dispara busca online para a linha selecionada na planilha."""
+        indexes = self.spreadsheet_view.selectedIndexes()
+        if not indexes:
+            self.statusBar().showMessage("Selecione uma linha primeiro")
+            return
+        row = indexes[0].row()
+        meta = self.spreadsheet_view.model.get_metadata(row)
+        if meta is None:
+            self.statusBar().showMessage("Sem metadados para buscar")
+            return
+        self._start_lookup_worker([(row, meta)])
+
+    def _lookup_all_incomplete(self) -> None:
+        """Dispara busca em lote para linhas com quality != COMPLETE."""
+        from .pdf_metadata_extractor import MetadataQuality
+        rows = []
+        for row in range(self.spreadsheet_view.model.rowCount()):
+            meta = self.spreadsheet_view.model.get_metadata(row)
+            if meta and meta.quality != MetadataQuality.COMPLETE:
+                rows.append((row, meta))
+        if not rows:
+            self.statusBar().showMessage("Todas as linhas já têm metadados completos")
+            return
+        self._start_lookup_worker(rows)
+
+    def _start_lookup_worker(self, rows: list) -> None:
+        """Inicia LookupWorker em background para processar as linhas dadas."""
+        from .rename_worker import LookupWorker
+        service = self._get_lookup_service()
+        if hasattr(self, '_lookup_worker') and self._lookup_worker.isRunning():
+            self._lookup_worker.cancel()
+            self._lookup_worker.wait()
+        self._lookup_worker = LookupWorker(rows, service)
+        self._lookup_worker.result_ready.connect(self._on_lookup_result)
+        self._lookup_worker.finished.connect(
+            lambda total: self.statusBar().showMessage(f"Busca concluída: {total} arquivos processados")
+        )
+        self._lookup_worker.start()
+        self.statusBar().showMessage(f"Buscando metadados para {len(rows)} arquivo(s)...")
+
+    def _on_lookup_result(self, row: int, results: list) -> None:
+        """Aplica o melhor resultado de lookup à linha."""
+        if not results:
+            return
+        best = results[0]
+        self.spreadsheet_view.model.set_metadata(row, best.to_book_metadata())
 
 import os
 import shutil
