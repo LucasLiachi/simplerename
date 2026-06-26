@@ -85,6 +85,32 @@ class FileTableModel(QAbstractTableModel):
 
         return None
     
+    def set_metadata(self, row: int, meta: object) -> None:
+        """Atualiza colunas de metadados para uma linha após extração em background.
+
+        Args:
+            row: Índice da linha na tabela.
+            meta: Instância de BookMetadata com os campos extraídos.
+        """
+        if row >= len(self.files):
+            return
+        file = self.files[row]
+        mapping = {
+            'Título': meta.title or '',
+            'Autor': meta.author or '',
+            'ISBN': meta.isbn or '',
+            'Ano': meta.year or '',
+            'Editora': meta.publisher or '',
+        }
+        if file['path'] not in self.custom_data:
+            self.custom_data[file['path']] = {}
+        self.custom_data[file['path']].update(mapping)
+        # Armazena qualidade para indicador visual
+        self.custom_data[file['path']]['_quality'] = meta.quality.value
+        top_left = self.index(row, 0)
+        bottom_right = self.index(row, self.columnCount() - 1)
+        self.dataChanged.emit(top_left, bottom_right)
+
     def get_custom_column_indices(self) -> List[int]:
         """Retorna os índices das colunas customizadas"""
         format_idx = 1

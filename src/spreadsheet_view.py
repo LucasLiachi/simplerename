@@ -120,6 +120,44 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
                 })
         self.model.load_files(files)
 
+        # Adicionar colunas de metadados se ainda não existirem
+        meta_cols = ['Título', 'Autor', 'ISBN', 'Ano', 'Editora']
+        for col in meta_cols:
+            if col not in self.model.custom_columns:
+                self.model.add_custom_column(col)
+
+        # Disparar extração em background para PDFs
+        pdf_files = [
+            (row, file['path'])
+            for row, file in enumerate(self.model.files)
+            if file.get('format', '').lower() == 'pdf'
+        ]
+        if pdf_files:
+            self._start_metadata_extraction(pdf_files)
+
+    def _start_metadata_extraction(self, pdf_files: list) -> None:
+        """Inicia extração de metadados em thread background.
+
+        Args:
+            pdf_files: Lista de tuplas (row_index, caminho_absoluto_pdf).
+        """
+        from .rename_worker import MetadataWorker
+        if hasattr(self, '_metadata_worker') and self._metadata_worker.isRunning():
+            self._metadata_worker.cancel()
+            self._metadata_worker.wait()
+        self._metadata_worker = MetadataWorker(pdf_files)
+        self._metadata_worker.metadata_ready.connect(self._on_metadata_ready)
+        self._metadata_worker.start()
+
+    def _on_metadata_ready(self, row: int, meta: object) -> None:
+        """Recebe metadados extraídos e atualiza o modelo.
+
+        Args:
+            row: Índice da linha correspondente ao PDF processado.
+            meta: Instância de BookMetadata com os campos extraídos.
+        """
+        self.model.set_metadata(row, meta)
+
     def get_changes(self) -> List[tuple]:
         """Return list of (old_path, new_name) for files that were modified."""
         changes = []
