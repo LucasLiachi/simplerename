@@ -9,22 +9,32 @@ Responsible for:
 Dependencies:
 - spreadsheet_view.py: For file display and editing
 - rename_controller.py: For executing rename operations
+- history_manager.py: For undo/redo history persistence
 """
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QFileDialog,
                            QStatusBar, QLabel, QLineEdit, QPushButton, QHBoxLayout)
 from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QKeySequence, QShortcut
 import os
 from .spreadsheet_view import SpreadsheetView
 from .rename_controller import RenameController
+from .history_manager import HistoryManager
+
+# History file stored in %APPDATA%\SimpleRename\history.json (Windows)
+_APP_DATA_DIR = os.path.join(os.getenv("APPDATA", os.path.expanduser("~")), "SimpleRename")
+_HISTORY_FILE = os.path.join(_APP_DATA_DIR, "history.json")
+
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    """Main application window for SimpleRename."""
+
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Simple Rename")
-        
+
         # Ajuste para compatibilidade com Wayland
         self.setMinimumSize(800, 600)  # Tamanho mínimo razoável
-        
+
         # Modificar a inicialização em tela cheia
         screen = self.screen().availableGeometry()
         if screen.isValid():
@@ -33,16 +43,16 @@ class MainWindow(QMainWindow):
                 (screen.width() - self.width()) // 2,
                 (screen.height() - self.height()) // 2
             )
-        
+
         # Maximize após a configuração inicial
         self.showNormal()  # Garante estado inicial consistente
         self.showMaximized()
-        
+
         # Setup widgets
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
-        
+
         # Directory selection
         dir_widget = QWidget()
         dir_layout = QHBoxLayout(dir_widget)
@@ -50,96 +60,157 @@ class MainWindow(QMainWindow):
         self.path_display.setReadOnly(True)
         browse_button = QPushButton("Browse")
         browse_button.clicked.connect(self.open_directory)
-        
+
         dir_layout.addWidget(QLabel("Directory:"))
         dir_layout.addWidget(self.path_display)
         dir_layout.addWidget(browse_button)
-        
+
         # File list
         self.spreadsheet_view = SpreadsheetView()
-        
+
         # Buttons container
         button_container = QWidget()
         button_layout = QHBoxLayout(button_container)
-        
+
         # Prepare Rename button
         prepare_button = QPushButton("Prepare Rename")
         prepare_button.clicked.connect(self.prepare_rename)
         prepare_button.setStyleSheet("background-color: #2196F3; color: white; padding: 5px 15px;")
-        
+
         # Replace Spaces button
         replace_spaces_button = QPushButton("Replace Spaces")
         replace_spaces_button.clicked.connect(self.replace_spaces)
         replace_spaces_button.setStyleSheet("background-color: #9C27B0; color: white; padding: 5px 15px;")
         replace_spaces_button.setToolTip("Replace all spaces with underscores")
-        
+
         # Apply button (moved from existing code)
         apply_button = QPushButton("Apply Changes")
         apply_button.clicked.connect(self.apply_changes)
         apply_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px 15px;")
-        
+
         # Add buttons to layout
         button_layout.addWidget(prepare_button)
         button_layout.addWidget(replace_spaces_button)
         button_layout.addWidget(apply_button)
         button_layout.addStretch()  # Alinha os botões à esquerda
-        
+
         # Layout assembly (modificado)
         self.main_layout.addWidget(dir_widget)
         self.main_layout.addWidget(self.spreadsheet_view)
         self.main_layout.addWidget(button_container)  # Adiciona container de botões
-        
+
         # Status bar
         self.setStatusBar(QStatusBar())
-        
-        # Controller
+
+        # History manager — loads persisted history on startup
+        self.history_manager = HistoryManager()
+        os.makedirs(_APP_DATA_DIR, exist_ok=True)
+        try:
+            self.history_manager.load_history(_HISTORY_FILE)
+        except Exception:
+            pass  # First run or corrupted file — start with empty history
+
+        # Controller receives the shared HistoryManager
         self.current_directory = ""
-        self.rename_controller = RenameController()
-    
-    def open_directory(self):
+        self.rename_controller = RenameController(self.history_manager)
+
+        # Keyboard shortcuts for undo / redo
+        undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        undo_shortcut.activated.connect(self.undo_rename)
+
+        redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
+        redo_shortcut.activated.connect(self.redo_rename)
+
+    def _save_history(self) -> None:
+        """Persist the current history to disk."""
+        try:
+            self.history_manager.save_history(_HISTORY_FILE)
+        except Exception:
+            pass  # Non-fatal: history is best-effort
+
+    def open_directory(self) -> None:
+        """Open a directory chooser and load the selected directory."""
         directory = QFileDialog.getExistingDirectory(self, "Select Directory")
         if directory:
             self.current_directory = directory
             self.path_display.setText(directory)
             self.spreadsheet_view.load_directory(directory)
-            
-    def apply_changes(self):
+
+    def apply_changes(self) -> None:
+        """Apply pending renames, record them in history, and reload the view."""
         if not self.current_directory:
             self.statusBar().showMessage("No directory selected")
             return
-            
+
         try:
             changes = self.spreadsheet_view.get_changes()
             if not changes:
                 self.statusBar().showMessage("No changes to apply")
                 return
-            
+
             results = self.rename_controller.execute_rename(changes)
             success_count = sum(1 for msg in results.values() if msg.startswith("Successfully"))
             self.statusBar().showMessage(f"Renamed {success_count} files")
+            self._save_history()
             self.spreadsheet_view.load_directory(self.current_directory)
-            
+
         except Exception as e:
             self.statusBar().showMessage(f"Error: {str(e)}")
-    
-    def prepare_rename(self):
-        """Handler for Prepare Rename button"""
+
+    def undo_rename(self) -> None:
+        """Undo the last batch of rename operations (Ctrl+Z)."""
         if not self.current_directory:
             self.statusBar().showMessage("No directory selected")
             return
-            
+
+        try:
+            operations = self.rename_controller.undo_last()
+            if operations is None:
+                self.statusBar().showMessage("Nothing to undo")
+                return
+            self._save_history()
+            self.spreadsheet_view.load_directory(self.current_directory)
+            count = sum(1 for op in operations if op.success)
+            self.statusBar().showMessage(f"Undid {count} rename(s)")
+        except Exception as e:
+            self.statusBar().showMessage(f"Undo error: {str(e)}")
+
+    def redo_rename(self) -> None:
+        """Redo the last undone batch of rename operations (Ctrl+Y)."""
+        if not self.current_directory:
+            self.statusBar().showMessage("No directory selected")
+            return
+
+        try:
+            operations = self.rename_controller.redo_last()
+            if operations is None:
+                self.statusBar().showMessage("Nothing to redo")
+                return
+            self._save_history()
+            self.spreadsheet_view.load_directory(self.current_directory)
+            count = sum(1 for op in operations if op.success)
+            self.statusBar().showMessage(f"Redid {count} rename(s)")
+        except Exception as e:
+            self.statusBar().showMessage(f"Redo error: {str(e)}")
+
+    def prepare_rename(self) -> None:
+        """Handler for Prepare Rename button."""
+        if not self.current_directory:
+            self.statusBar().showMessage("No directory selected")
+            return
+
         try:
             self.spreadsheet_view.prepare_rename_files()
             self.statusBar().showMessage("New names prepared from custom columns")
         except Exception as e:
             self.statusBar().showMessage(f"Error preparing names: {str(e)}")
 
-    def replace_spaces(self):
-        """Handle Replace Spaces button click"""
+    def replace_spaces(self) -> None:
+        """Handle Replace Spaces button click."""
         if not self.current_directory:
             self.statusBar().showMessage("No directory selected")
             return
-            
+
         try:
             self.spreadsheet_view.replace_spaces()
             self.statusBar().showMessage("Spaces replaced with underscores")
