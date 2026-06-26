@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QFileDialog,
                              QStatusBar, QLabel, QLineEdit, QPushButton,
                              QHBoxLayout, QProgressDialog)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut, QAction
 import os
 from .spreadsheet_view import SpreadsheetView
 from .rename_controller import RenameController
@@ -70,89 +70,9 @@ class MainWindow(QMainWindow):
         # File list
         self.spreadsheet_view = SpreadsheetView()
 
-        # Buttons container
-        button_container = QWidget()
-        button_layout = QHBoxLayout(button_container)
-
-        # Prepare Rename button
-        prepare_button = QPushButton("Prepare Rename")
-        prepare_button.clicked.connect(self.prepare_rename)
-        prepare_button.setStyleSheet("background-color: #2196F3; color: white; padding: 5px 15px;")
-
-        # Replace Spaces button
-        replace_spaces_button = QPushButton("Replace Spaces")
-        replace_spaces_button.clicked.connect(self.replace_spaces)
-        replace_spaces_button.setStyleSheet("background-color: #9C27B0; color: white; padding: 5px 15px;")
-        replace_spaces_button.setToolTip("Replace all spaces with underscores")
-
-        # Apply button
-        apply_button = QPushButton("Apply Changes")
-        apply_button.clicked.connect(self.apply_changes)
-        apply_button.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px 15px;")
-
-        # Lookup Online button
-        self.lookup_btn = QPushButton("\U0001f50d Buscar Online")
-        self.lookup_btn.setToolTip("Buscar metadados online para a linha selecionada")
-        self.lookup_btn.clicked.connect(self._lookup_selected)
-
-        # Lookup All button
-        self.lookup_all_btn = QPushButton("\U0001f50d Buscar Todos")
-        self.lookup_all_btn.setToolTip("Buscar metadados online para todas as linhas sem dados completos")
-        self.lookup_all_btn.clicked.connect(self._lookup_all_incomplete)
-
-        # Search Incomplete button (FEATURE-007)
-        self.search_incomplete_btn = QPushButton("\U0001f50d Buscar Incompletos")
-        self.search_incomplete_btn.setToolTip("Buscar apenas linhas com qualidade incompleta (\U0001f7e1 ou \U0001f534)")
-        self.search_incomplete_btn.clicked.connect(self._search_incomplete)
-
-        # Apply with Folders button (FEATURE-004)
-        self.apply_folders_btn = QPushButton("Aplicar com Pastas")
-        self.apply_folders_btn.setToolTip("Renomear e organizar por CDD com criacao de subpastas")
-        self.apply_folders_btn.clicked.connect(self._apply_with_folders)
-
-        # Undo / Redo buttons
-        self.undo_btn = QPushButton("↩ Undo")
-        self.undo_btn.setEnabled(False)
-        self.undo_btn.setToolTip("Ctrl+Z — desfazer último rename")
-        self.undo_btn.clicked.connect(self.undo_rename)
-
-        self.redo_btn = QPushButton("↪ Redo")
-        self.redo_btn.setEnabled(False)
-        self.redo_btn.setToolTip("Ctrl+Y — refazer último rename")
-        self.redo_btn.clicked.connect(self.redo_rename)
-
-        # Confirm / Clear proposal buttons (FEATURE-006)
-        self.confirm_row_btn = QPushButton("✓ Confirmar Linha")
-        self.confirm_row_btn.setToolTip("Aceitar todas as sugestoes da linha selecionada")
-        self.confirm_row_btn.clicked.connect(self._confirm_selected_row)
-
-        self.clear_proposal_btn = QPushButton("✗ Limpar Proposta")
-        self.clear_proposal_btn.setToolTip("Apagar sugestoes da linha selecionada")
-        self.clear_proposal_btn.clicked.connect(self._clear_selected_proposal)
-
-        self.confirm_all_btn = QPushButton("✓✓ Confirmar Todos")
-        self.confirm_all_btn.setToolTip("Aceitar todas as sugestoes de todas as linhas")
-        self.confirm_all_btn.clicked.connect(self._confirm_all)
-
-        # Add buttons to layout
-        button_layout.addWidget(prepare_button)
-        button_layout.addWidget(replace_spaces_button)
-        button_layout.addWidget(apply_button)
-        button_layout.addWidget(self.lookup_btn)
-        button_layout.addWidget(self.lookup_all_btn)
-        button_layout.addWidget(self.search_incomplete_btn)
-        button_layout.addWidget(self.apply_folders_btn)
-        button_layout.addWidget(self.undo_btn)
-        button_layout.addWidget(self.redo_btn)
-        button_layout.addWidget(self.confirm_row_btn)
-        button_layout.addWidget(self.clear_proposal_btn)
-        button_layout.addWidget(self.confirm_all_btn)
-        button_layout.addStretch()  # Alinha os botões à esquerda
-
         # Layout assembly
         self.main_layout.addWidget(dir_widget)
         self.main_layout.addWidget(self.spreadsheet_view)
-        self.main_layout.addWidget(button_container)
 
         # Status bar
         self.setStatusBar(QStatusBar())
@@ -172,18 +92,220 @@ class MainWindow(QMainWindow):
         # SearchPipeline — inicializado lazy (FEATURE-007)
         self._search_pipeline: object = None
 
-        # Connect HistoryManager signals to enable/disable Undo/Redo buttons
-        if hasattr(self.history_manager, 'undoAvailable'):
-            self.history_manager.undoAvailable.connect(self.undo_btn.setEnabled)
-        if hasattr(self.history_manager, 'redoAvailable'):
-            self.history_manager.redoAvailable.connect(self.redo_btn.setEnabled)
+        # Toolbar com 11 ações em 5 grupos
+        self._setup_toolbar()
+
+        # Atualiza estado da toolbar sempre que seleção ou dados mudam
+        self.spreadsheet_view.selectionModel().selectionChanged.connect(
+            lambda: self._update_toolbar_state()
+        )
+        self.spreadsheet_view.model.dataChanged.connect(
+            lambda: self._update_toolbar_state()
+        )
+        self.history_manager.historyChanged.connect(self._update_toolbar_state)
 
         # Keyboard shortcuts for undo / redo
         undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
-        undo_shortcut.activated.connect(self.undo_rename)
+        undo_shortcut.activated.connect(self._on_undo)
 
         redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
-        redo_shortcut.activated.connect(self.redo_rename)
+        redo_shortcut.activated.connect(self._on_redo)
+
+        self._update_toolbar_state()
+
+    def _setup_toolbar(self) -> None:
+        """Cria toolbar principal com 11 ações em 5 grupos."""
+        tb = self.addToolBar("Principal")
+        tb.setMovable(False)
+
+        # Grupo 1 — Identificar
+        self.browse_action = QAction("Abrir Pasta", self)
+        self.browse_action.setToolTip("Selecionar a pasta com os arquivos a organizar")
+        tb.addAction(self.browse_action)
+        tb.addSeparator()
+
+        # Grupo 2 — Buscar
+        self.search_selected_action = QAction("Buscar (Linha)", self)
+        self.search_selected_action.setToolTip("Buscar metadados online para a linha selecionada")
+        self.search_selected_action.setEnabled(False)
+
+        self.search_incomplete_action = QAction("Buscar Incompletos", self)
+        self.search_incomplete_action.setToolTip("Buscar metadados para linhas sem dados (\U0001f534/\U0001f7e1)")
+        self.search_incomplete_action.setEnabled(False)
+
+        self.search_all_action = QAction("Buscar Todos", self)
+        self.search_all_action.setToolTip("Buscar metadados para todas as linhas da planilha")
+        self.search_all_action.setEnabled(False)
+
+        tb.addAction(self.search_selected_action)
+        tb.addAction(self.search_incomplete_action)
+        tb.addAction(self.search_all_action)
+        tb.addSeparator()
+
+        # Grupo 3 — Revisar
+        self.confirm_row_action = QAction("Confirmar Linha ✓", self)
+        self.confirm_row_action.setToolTip("Aceitar todas as sugestoes da linha selecionada")
+        self.confirm_row_action.setEnabled(False)
+
+        self.confirm_all_action = QAction("Confirmar Todos ✓✓", self)
+        self.confirm_all_action.setToolTip("Aceitar todas as sugestoes de todas as linhas")
+        self.confirm_all_action.setEnabled(False)
+
+        self.clear_proposal_action = QAction("Limpar Proposta ✗", self)
+        self.clear_proposal_action.setToolTip("Apagar a faixa verde da linha selecionada")
+        self.clear_proposal_action.setEnabled(False)
+
+        tb.addAction(self.confirm_row_action)
+        tb.addAction(self.confirm_all_action)
+        tb.addAction(self.clear_proposal_action)
+        tb.addSeparator()
+
+        # Grupo 4 — Aplicar
+        self.apply_action = QAction("Aplicar Rename ▶", self)
+        self.apply_action.setToolTip("Renomear arquivos e gravar metadados confirmados no PDF")
+        self.apply_action.setEnabled(False)
+
+        self.apply_folders_action = QAction("Aplicar com Pastas \U0001f4c1", self)
+        self.apply_folders_action.setToolTip("Renomear e mover para subpastas CDD")
+        self.apply_folders_action.setEnabled(False)
+
+        tb.addAction(self.apply_action)
+        tb.addAction(self.apply_folders_action)
+        tb.addSeparator()
+
+        # Grupo 5 — Histórico
+        self.undo_action = QAction("Desfazer ↩", self)
+        self.undo_action.setToolTip("Reverter o último rename aplicado em disco")
+        self.undo_action.setEnabled(False)
+
+        self.redo_action = QAction("Refazer ↪", self)
+        self.redo_action.setToolTip("Refazer o rename desfeito")
+        self.redo_action.setEnabled(False)
+
+        tb.addAction(self.undo_action)
+        tb.addAction(self.redo_action)
+
+        # Conectar sinais
+        self.browse_action.triggered.connect(self._on_browse)
+        self.search_selected_action.triggered.connect(self._on_search_selected)
+        self.search_incomplete_action.triggered.connect(self._on_search_incomplete)
+        self.search_all_action.triggered.connect(self._on_search_all)
+        self.confirm_row_action.triggered.connect(self._on_confirm_row)
+        self.confirm_all_action.triggered.connect(self._on_confirm_all)
+        self.clear_proposal_action.triggered.connect(self._on_clear_proposal)
+        self.apply_action.triggered.connect(self._on_apply)
+        self.apply_folders_action.triggered.connect(self._on_apply_folders)
+        self.undo_action.triggered.connect(self._on_undo)
+        self.redo_action.triggered.connect(self._on_redo)
+
+    def _update_toolbar_state(self) -> None:
+        """Habilita/desabilita botões da toolbar conforme estado atual do model e seleção."""
+        from .pdf_metadata_extractor import MetadataQuality
+        from .file_manager import DualBandTableModel
+
+        model = self.spreadsheet_view.model
+        has_rows = isinstance(model, DualBandTableModel) and bool(model.rows)
+        rows = model.rows if has_rows else []
+
+        selected = self.spreadsheet_view.selectedIndexes()
+        has_selection = bool(selected)
+        sel_row = selected[0].row() if has_selection and rows else -1
+        sel_fr = rows[sel_row] if 0 <= sel_row < len(rows) else None
+
+        self.search_selected_action.setEnabled(has_selection)
+        self.search_incomplete_action.setEnabled(
+            any(r.metadata_quality != MetadataQuality.COMPLETE for r in rows)
+        )
+        self.search_all_action.setEnabled(has_rows)
+
+        _green_keys = ("new_filename", "new_title", "new_author", "new_year", "new_publisher")
+        has_unconfirmed_row = sel_fr is not None and any(
+            getattr(sel_fr, k) is not None and not sel_fr.field_confirmed.get(k)
+            for k in _green_keys
+        )
+        self.confirm_row_action.setEnabled(has_unconfirmed_row)
+
+        has_unconfirmed_any = any(
+            getattr(r, k) is not None and not r.field_confirmed.get(k)
+            for r in rows for k in _green_keys
+        )
+        self.confirm_all_action.setEnabled(has_unconfirmed_any)
+
+        has_green_data = sel_fr is not None and any(
+            getattr(sel_fr, k) is not None for k in _green_keys
+        )
+        self.clear_proposal_action.setEnabled(has_green_data)
+
+        has_confirmed_rename = any(
+            r.new_filename and r.field_confirmed.get("new_filename") for r in rows
+        )
+        self.apply_action.setEnabled(has_confirmed_rename)
+        self.apply_folders_action.setEnabled(has_confirmed_rename)
+
+        self.undo_action.setEnabled(bool(self.history_manager.undo_stack))
+        self.redo_action.setEnabled(bool(self.history_manager.redo_stack))
+
+    # ---------------------------------------------------------------------------
+    # Handlers da toolbar
+    # ---------------------------------------------------------------------------
+
+    def _on_browse(self) -> None:
+        """Handler para Abrir Pasta."""
+        self.open_directory()
+
+    def _on_search_selected(self) -> None:
+        """Busca metadados via SearchPipeline para a linha selecionada."""
+        from .file_manager import DualBandTableModel
+        indexes = self.spreadsheet_view.selectedIndexes()
+        if not indexes:
+            self.statusBar().showMessage("Selecione uma linha primeiro")
+            return
+        model = self.spreadsheet_view.model
+        if not isinstance(model, DualBandTableModel):
+            return
+        row_idx = indexes[0].row()
+        self._start_search_worker([(row_idx, model.rows[row_idx])])
+
+    def _on_search_incomplete(self) -> None:
+        """Busca metadados para linhas incompletas."""
+        self._search_incomplete()
+
+    def _on_search_all(self) -> None:
+        """Busca metadados para todas as linhas."""
+        from .file_manager import DualBandTableModel
+        model = self.spreadsheet_view.model
+        if not isinstance(model, DualBandTableModel) or not model.rows:
+            self.statusBar().showMessage("Nenhum arquivo carregado")
+            return
+        self._start_search_worker(list(enumerate(model.rows)))
+
+    def _on_confirm_row(self) -> None:
+        """Confirma sugestoes da linha selecionada."""
+        self._confirm_selected_row()
+
+    def _on_confirm_all(self) -> None:
+        """Confirma todas as sugestoes."""
+        self._confirm_all()
+
+    def _on_clear_proposal(self) -> None:
+        """Limpa proposta da linha selecionada."""
+        self._clear_selected_proposal()
+
+    def _on_apply(self) -> None:
+        """Aplica renames confirmados."""
+        self.apply_changes()
+
+    def _on_apply_folders(self) -> None:
+        """Aplica renames com organização por pastas CDD."""
+        self._apply_with_folders()
+
+    def _on_undo(self) -> None:
+        """Desfaz último rename."""
+        self.undo_rename()
+
+    def _on_redo(self) -> None:
+        """Refaz último rename desfeito."""
+        self.redo_rename()
 
     def _save_history(self) -> None:
         """Persist the current history to disk."""
@@ -324,30 +446,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Redo error: {str(e)}")
 
-    def prepare_rename(self) -> None:
-        """Handler for Prepare Rename button."""
-        if not self.current_directory:
-            self.statusBar().showMessage("No directory selected")
-            return
-
-        try:
-            self.spreadsheet_view.prepare_rename_files()
-            self.statusBar().showMessage("New names prepared from custom columns")
-        except Exception as e:
-            self.statusBar().showMessage(f"Error preparing names: {str(e)}")
-
-    def replace_spaces(self) -> None:
-        """Handle Replace Spaces button click."""
-        if not self.current_directory:
-            self.statusBar().showMessage("No directory selected")
-            return
-
-        try:
-            self.spreadsheet_view.replace_spaces()
-            self.statusBar().showMessage("Spaces replaced with underscores")
-        except Exception as e:
-            self.statusBar().showMessage(f"Error replacing spaces: {str(e)}")
-
     def _get_lookup_service(self) -> object:
         """Instancia MetadataLookupService (lazy, reutilizado entre chamadas)."""
         if not hasattr(self, '_lookup_service'):
@@ -481,14 +579,8 @@ class MainWindow(QMainWindow):
             row_idx: Índice da linha atualizada.
             updated_row: FileRow com faixa verde preenchida.
         """
-        from .file_manager import DualBandTableModel
-        model = self.spreadsheet_view.model
-        if isinstance(model, DualBandTableModel):
-            model.rows[row_idx] = updated_row
-            model.dataChanged.emit(
-                model.index(row_idx, 0),
-                model.index(row_idx, model.columnCount() - 1)
-            )
+        self.spreadsheet_view.model.update_row(row_idx, updated_row)
+        self.spreadsheet_view.viewport().update()
 
     def _on_search_row_error(self, row_idx: int, message: str) -> None:
         """
