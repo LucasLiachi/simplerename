@@ -1,16 +1,21 @@
 ; SimpleRename Installer Script
+
+; Versão injetada pelo CI via /DVERSION=X.Y.Z
+!ifndef VERSION
+  !define VERSION "0.0.0-dev"
+!endif
+
 !define APPNAME "SimpleRename"
 !define COMPANYNAME "simplerename"
 !define DESCRIPTION "A lightweight file renaming tool"
-!define VERSION "0.0.4"
 !define INSTALLSIZE 20000
 
 ; Include Modern UI
 !include "MUI2.nsh"
 
 ; General
-Name "${APPNAME}"
-OutFile "dist-windows/SimpleRenameSetup.exe"
+Name "${APPNAME} ${VERSION}"
+OutFile "dist-windows/SimpleRename-Setup-${VERSION}.exe"
 InstallDir "$PROGRAMFILES64\${APPNAME}"
 InstallDirRegKey HKLM "Software\${APPNAME}" "Install_Dir"
 
@@ -50,7 +55,7 @@ Section "Install"
     CreateShortcut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\SimpleRename.exe"
     
     ; Write uninstaller information to registry
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME}"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME} ${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" "$INSTDIR\uninstall.exe"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayIcon" "$INSTDIR\resources\icons\simplerename.ico"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${VERSION}"
