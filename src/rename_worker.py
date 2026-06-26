@@ -81,3 +81,49 @@ class LookupWorker(QThread):
     def cancel(self) -> None:
         """Sinaliza ao worker para interromper o processamento na próxima iteração."""
         self._cancelled = True
+
+
+class RenameWorker(QThread):
+    """Executa rename em lote em background, emitindo progresso por arquivo."""
+
+    progress = pyqtSignal(int, int)   # (arquivos_concluídos, total)
+    file_done = pyqtSignal(str, str, bool)  # (old_path, new_name, success)
+    finished = pyqtSignal(dict)       # {old_path: status_message}
+
+    def __init__(self, changes: list, controller: object) -> None:
+        """
+        Inicializa o worker com a lista de mudanças e o controller.
+
+        Args:
+            changes: Lista de tuplas (old_path, new_name).
+            controller: RenameController instanciado.
+        """
+        super().__init__()
+        self._changes = changes
+        self._controller = controller
+        self._cancelled = False
+        self._results: dict = {}
+
+    def run(self) -> None:
+        """Processa cada rename em sequência, emitindo sinais de progresso."""
+        total = len(self._changes)
+        for i, (old_path, new_name) in enumerate(self._changes):
+            if self._cancelled:
+                break
+            try:
+                results = self._controller.execute_rename([(old_path, new_name)])
+                msg = results.get(old_path, "")
+                success = msg.startswith("Successfully")
+                self._results[old_path] = msg
+                self.file_done.emit(old_path, new_name, success)
+            except Exception as exc:
+                msg = f"Failed to rename: {exc}"
+                self._results[old_path] = msg
+                self.file_done.emit(old_path, new_name, False)
+                logger.error("RenameWorker error for %s: %s", old_path, exc)
+            self.progress.emit(i + 1, total)
+        self.finished.emit(self._results)
+
+    def cancel(self) -> None:
+        """Sinaliza ao worker para interromper o processamento na próxima iteração."""
+        self._cancelled = True

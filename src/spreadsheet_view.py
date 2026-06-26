@@ -95,9 +95,12 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             col_idx = custom_col_start + i
             header.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.ResizeToContents)
 
-        # Configura última coluna (New Name)
-        last_col = custom_col_start + len(self.custom_columns)
-        header.setSectionResizeMode(last_col, QHeaderView.ResizeMode.Stretch)
+        # Configura coluna New Name (penúltima) e Preview (última)
+        new_name_col = custom_col_start + len(self.custom_columns)
+        preview_col = new_name_col + 1
+        header.setSectionResizeMode(new_name_col, QHeaderView.ResizeMode.Stretch)
+        if preview_col < self.model.columnCount():
+            header.setSectionResizeMode(preview_col, QHeaderView.ResizeMode.Stretch)
 
         self.setSortingEnabled(True)
         self.setAlternatingRowColors(True)
@@ -183,8 +186,8 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         custom_data = []
         model = self.model
 
-        # Identifica o índice das colunas customizadas
-        new_name_idx = len(model.headers) - 1  # Índice da última coluna (New Name)
+        # Identifica o índice das colunas customizadas (entre '+' e 'New Name')
+        new_name_idx = model._new_name_col_index()
         custom_cols = range(3, new_name_idx)  # Índices das colunas customizadas (após '+')
 
         # Coleta dados para cada linha
@@ -216,8 +219,8 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             new_text = data['custom_text']
 
             if new_text:  # Atualiza apenas se houver texto para concatenar
-                # Atualiza a coluna New Name
-                new_name_idx = len(model.headers) - 1
+                # Atualiza a coluna New Name (penúltima)
+                new_name_idx = model._new_name_col_index()
                 new_name_index = model.index(row, new_name_idx)
                 model.setData(new_name_index, new_text, Qt.ItemDataRole.EditRole)
 
@@ -383,7 +386,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
                         painter.fillRect(handle_rect, handle_color)
 
     def isEditableCell(self, row: int, column: int) -> bool:
-        """Verifica se uma célula é editável."""
+        """Verifica se uma célula é editável (coluna customizada ou New Name, não Preview)."""
         if not self.model:
             return False
 
@@ -391,10 +394,10 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         if not index.isValid():
             return False
 
-        # Verifica se é uma coluna customizada ou New Name
+        # Custom columns + New Name are editable; Preview (last col) is not
         custom_col_start = 3
-        custom_col_end = len(self.model.headers) - 1
-        return custom_col_start <= column <= custom_col_end
+        new_name_col = self.model._new_name_col_index()
+        return custom_col_start <= column <= new_name_col
 
     def getFillHandleRect(self, cell_rect: QRect) -> QRect:
         """Retorna o retângulo do handle de preenchimento."""
@@ -451,10 +454,10 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         model.beginResetModel()
 
         try:
-            # Get indices of editable columns (custom columns and New Name)
+            # Get indices of editable columns (custom columns and New Name, not Preview)
             custom_col_start = 3
-            last_col = len(model.headers) - 1
-            editable_cols = list(range(custom_col_start, last_col + 1))
+            new_name_col = model._new_name_col_index()
+            editable_cols = list(range(custom_col_start, new_name_col + 1))
 
             # Process each editable cell
             for row in range(model.rowCount()):
