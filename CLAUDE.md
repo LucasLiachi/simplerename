@@ -114,15 +114,15 @@ simplerename/
 
 ---
 
-## Débitos Técnicos Conhecidos (resolver antes de adicionar código novo)
+## Débitos Técnicos
 
-| ID | Arquivo | Problema | Prioridade |
+| ID | Arquivo | Problema | Status |
 |---|---|---|---|
-| DEBT-001 | `src/file_manager.py` | Código triplicado: `FileOperationError`, `rename_files` etc. aparecem 3x | **Alta** — resolver antes de FEATURE-002 |
-| DEBT-002 | `src/spreadsheet_view.py` | Fill handle duplo: herança `DraggableTableView` + reimplementação manual conflitam | **Alta** — resolver antes de FEATURE-005 |
-| DEBT-003 | `src/rename_controller.py` | `HistoryManager` implementado mas nunca instanciado/conectado | Média — resolver em FEATURE-005 |
+| DEBT-001 | `src/file_manager.py` | Código triplicado: `FileOperationError`, `rename_files` etc. | ✅ Resolvido em FEATURE-002 |
+| DEBT-002 | `src/spreadsheet_view.py` | Fill handle duplo: herança + reimplementação manual conflitam | ✅ Resolvido em FEATURE-005 |
+| DEBT-003 | `src/rename_controller.py` | `HistoryManager` nunca instanciado/conectado | ✅ Resolvido em FEATURE-005 |
 | DEBT-004 | `src/main_window.py` | `FilterSortManager` nunca conectado à UI | Baixa — deferido para Q4 |
-| DEBT-005 | `installer.nsi` vs `windows_installer.nsi` | Dois arquivos NSIS; apenas `installer.nsi` é o definitivo | **Alta** — resolver antes de FEATURE-001 |
+| DEBT-005 | `installer.nsi` vs `windows_installer.nsi` | Dois arquivos NSIS duplicados | ✅ Resolvido em FEATURE-001 |
 
 ---
 
@@ -135,16 +135,22 @@ simplerename/
 
 ---
 
-## Sequência de Implementação (Q3 2026)
+## Histórico de Implementação (v1.0.0 → v1.0.4)
 
 ```
-[FEATURE-001] Build Pipeline         → Semanas 1-2  (desbloqueador)
-[DEBT-001]    Limpar file_manager    → Semana 3     (pré-requisito de FEATURE-002)
-[FEATURE-002] Extração PDF           → Semanas 3-4
-[FEATURE-003] Busca Online           → Semanas 5-6  (depende de FEATURE-002)
-[FEATURE-004] Catalogação CDD        → Semanas 7-8  (depende de FEATURE-003)
-[DEBT-002]    Fix fill handle        → Semana 9     (pré-requisito de FEATURE-005)
-[FEATURE-005] Planilha + Undo        → Semana 9
+[FEATURE-001] ✅ Build Pipeline         → src/version.py, GitHub Actions, NSIS
+[FEATURE-002] ✅ Extração PDF           → src/pdf_metadata_extractor.py
+[FEATURE-003] ✅ Busca Online           → src/metadata_lookup.py
+[FEATURE-004] ✅ Catalogação CDD        → src/cataloging_engine.py
+[FEATURE-005] ✅ Planilha + Undo        → HistoryManager, Preview, Ctrl+Z/Y
+```
+
+## Próximas Implementações (v1.1.0 — Semanas 10-14)
+
+```
+[FEATURE-006] Layout Dual-Faixa     → Semanas 10-11
+[FEATURE-007] Busca ISBN Completa   → Semanas 12-13
+              Integração + testes   → Semana 14 → tag v1.1.0
 ```
 
 ---
