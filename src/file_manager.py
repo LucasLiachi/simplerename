@@ -45,6 +45,7 @@ class FileRow:
     new_year:          Optional[str] = None
     new_publisher:     Optional[str] = None
     new_isbn:          Optional[str] = None
+    new_classification: Optional[str] = None
 
     # Controle interno
     field_origins:   Dict[str, str]  = dc_field(default_factory=dict)
@@ -73,12 +74,13 @@ COL_NEW_AUTHOR   = 10
 COL_NEW_YEAR     = 11
 COL_NEW_PUB      = 12
 COL_NEW_ISBN     = 13
-COL_PREVIEW      = 14
+COL_NEW_CLASSIF  = 14
+COL_PREVIEW      = 15
 
 BLUE_COLS   = {COL_QUALITY, COL_CURR_NAME, COL_FORMAT, COL_CURR_TITLE,
                COL_CURR_AUTHOR, COL_CURR_ISBN, COL_CURR_YEAR, COL_CURR_PUB}
 GREEN_COLS  = {COL_NEW_NAME, COL_NEW_TITLE, COL_NEW_AUTHOR,
-               COL_NEW_YEAR, COL_NEW_PUB, COL_NEW_ISBN}
+               COL_NEW_YEAR, COL_NEW_PUB, COL_NEW_ISBN, COL_NEW_CLASSIF}
 PREVIEW_COL = COL_PREVIEW
 
 GREEN_COL_KEYS = {
@@ -87,7 +89,8 @@ GREEN_COL_KEYS = {
     COL_NEW_AUTHOR: "new_author",
     COL_NEW_YEAR:   "new_year",
     COL_NEW_PUB:    "new_publisher",
-    COL_NEW_ISBN:   "new_isbn",
+    COL_NEW_ISBN:    "new_isbn",
+    COL_NEW_CLASSIF: "new_classification",
 }
 
 HEADERS = [
@@ -105,6 +108,7 @@ HEADERS = [
     "Novo Ano",
     "Nova Editora",
     "Novo ISBN",
+    "Classificação",
     "Preview",
 ]
 
@@ -182,6 +186,7 @@ class DualBandTableModel(QAbstractTableModel):
         if col == COL_NEW_YEAR:     return row.new_year or ""
         if col == COL_NEW_PUB:      return row.new_publisher or ""
         if col == COL_NEW_ISBN:     return row.new_isbn or ""
+        if col == COL_NEW_CLASSIF:  return row.new_classification or ""
         if col == COL_PREVIEW:      return row.preview
         return None
 
@@ -308,13 +313,15 @@ class DualBandTableModel(QAbstractTableModel):
             self.index(row_idx, COL_PREVIEW)
         )
 
-    def set_proposal(self, row_idx: int, result: object, origin: str = "OL") -> None:
+    def set_proposal(self, row_idx: int, result: object, origin: str = "OL",
+                     classification: Optional[str] = None) -> None:
         """Popula faixa verde com LookupResult.
 
         Args:
             row_idx: Indice da linha a atualizar.
             result: Instancia de LookupResult com os campos sugeridos.
             origin: Sigla da fonte (ex: 'OL', 'GB').
+            classification: folder_path do CatalogingSuggestion (ex: '869 - Literatura').
         """
         if row_idx >= len(self.rows):
             return
@@ -337,6 +344,10 @@ class DualBandTableModel(QAbstractTableModel):
             row.new_isbn = isbn
             row.field_origins["new_isbn"] = origin
             row.field_confirmed["new_isbn"] = False
+        if classification:
+            row.new_classification = classification
+            row.field_origins["new_classification"] = origin
+            row.field_confirmed["new_classification"] = False
         self.dataChanged.emit(
             self.index(row_idx, COL_NEW_NAME),
             self.index(row_idx, COL_PREVIEW)
@@ -352,7 +363,8 @@ class DualBandTableModel(QAbstractTableModel):
             return
         row = self.rows[row_idx]
         for key in ("new_filename", "new_title", "new_author",
-                    "new_year", "new_publisher", "new_isbn"):
+                    "new_year", "new_publisher", "new_isbn",
+                    "new_classification"):
             if getattr(row, key) is not None:
                 row.field_confirmed[key] = True
         self.dataChanged.emit(
@@ -370,7 +382,8 @@ class DualBandTableModel(QAbstractTableModel):
             return
         row = self.rows[row_idx]
         for key in ("new_filename", "new_title", "new_author",
-                    "new_year", "new_publisher", "new_isbn"):
+                    "new_year", "new_publisher", "new_isbn",
+                    "new_classification"):
             setattr(row, key, None)
             row.field_origins.pop(key, None)
             row.field_confirmed.pop(key, None)

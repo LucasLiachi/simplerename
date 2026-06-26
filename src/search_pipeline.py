@@ -263,15 +263,22 @@ class SearchPipeline:
             year=row.new_year,   publisher=row.new_publisher,
             isbn=result.isbn13,
         )
-        suggestion    = self.cataloging.suggest(meta, original_path=row.original_path)
+        categories: list = getattr(result, "categories", []) or []
+        suggestion  = self.cataloging.suggest(
+            meta,
+            original_path=row.original_path,
+            categories=categories,
+        )
         filename_full = suggestion.suggested_filename  # ex: "ORWELL, George - 1984 (1949).pdf"
-        row.new_filename = filename_full.rsplit(".", 1)[0] if "." in filename_full else filename_full
+        row.new_filename       = filename_full.rsplit(".", 1)[0] if "." in filename_full else filename_full
+        row.new_classification = suggestion.folder_path
 
         # Badge de origem e estado âmbar (não confirmado)
         source = result.source.value
         badge  = "OL" if "library" in source else "GB" if "google" in source else "cache"
         for key in ("new_filename", "new_title", "new_author",
-                    "new_year", "new_publisher", "new_isbn"):
+                    "new_year", "new_publisher", "new_isbn",
+                    "new_classification"):
             if getattr(row, key):
                 row.field_origins[key]   = badge
                 row.field_confirmed[key] = False

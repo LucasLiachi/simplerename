@@ -272,6 +272,57 @@ class TestSearchPipeline:
         pipeline.apply_result(row, _make_result(source=LookupSource.GOOGLE_BOOKS))
         assert row.field_origins.get("new_title") == "GB"
 
+    def test_apply_result_passes_categories_to_cataloging(self):
+        """apply_result deve passar result.categories ao cataloging.suggest()."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        _, kwargs = catalog.suggest.call_args
+        assert kwargs.get("categories") == ["Fiction"]
+
+    def test_apply_result_populates_new_classification(self):
+        """apply_result deve preencher new_classification com folder_path."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        assert row.new_classification == "869 - Literatura Portuguesa e Brasileira"
+        assert row.field_confirmed.get("new_classification") is False
+
+    def test_apply_result_no_categories_gives_default_classification(self):
+        """Sem categories, classificação deve ser o valor retornado pelo cataloging mock."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro (1990).epub",
+            folder_path="000 - Sem Classificacao",
+        )
+        row    = FileRow(current_filename="O Estrangeiro", file_extension=".epub")
+        result = _make_result(categories=[])
+        pipeline.apply_result(row, result)
+        assert row.new_classification == "000 - Sem Classificacao"
+
+    def test_apply_result_classification_has_amber_badge(self):
+        """new_classification preenchida deve ter field_confirmed=False e badge de origem."""
+        pipeline, lookup, catalog = _make_pipeline()
+        catalog.suggest.return_value = MagicMock(
+            suggested_filename="CAMUS, Albert - O Estrangeiro.epub",
+            folder_path="869 - Literatura Portuguesa e Brasileira",
+        )
+        row    = FileRow(current_filename="O Estrangeiro - Albert Camus", file_extension=".epub")
+        result = _make_result(source=LookupSource.OPEN_LIBRARY, categories=["Fiction"])
+        pipeline.apply_result(row, result)
+        assert row.field_confirmed.get("new_classification") is False
+        assert row.field_origins.get("new_classification") == "OL"
+
     def test_apply_result_populates_new_isbn(self):
         """apply_result deve preencher new_isbn com result.isbn13."""
         pipeline, _, _ = _make_pipeline()

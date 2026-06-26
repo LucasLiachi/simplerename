@@ -17,21 +17,25 @@ from src.cataloging_engine import CatalogingEngine, NamingConvention
 
 
 def _make_lookup_result(title, authors, isbn, year, publisher,
-                        source=LookupSource.OPEN_LIBRARY):
+                        categories=None, source=LookupSource.OPEN_LIBRARY):
     return LookupResult(
         title=title, authors=authors, isbn13=isbn,
         year=year, publisher=publisher,
+        categories=categories or [],
         confidence=0.9, source=source,
     )
 
 
 def _make_pipeline_with_service(lookup_service):
     engine = MagicMock()
-    engine.suggest.side_effect = lambda meta, **_: MagicMock(
+    engine.suggest.side_effect = lambda meta, **kwargs: MagicMock(
         suggested_filename=(
             f"{(meta.author or 'AUTOR').split(',')[0].strip()}, X"
             f" - {meta.title} ({meta.year or ''}).pdf"
-        )
+        ),
+        folder_path="869 - Literatura Portuguesa e Brasileira"
+        if "Fiction" in (kwargs.get("categories") or [])
+        else "000 - Sem Classificacao",
     )
     return SearchPipeline(lookup_service, engine)
 
@@ -137,6 +141,7 @@ class TestFileEstrangeiro:
         isbn_result = _make_lookup_result(
             title="O Estrangeiro", authors=["Albert Camus"],
             isbn="9788520917185", year="1990", publisher="Record",
+            categories=["Fiction"],
         )
         with patch("src.metadata_lookup.lookup_ol_by_title", return_value=[text_result]):
             with patch.object(svc, "_lookup_by_isbn", return_value=[isbn_result]):
@@ -151,6 +156,7 @@ class TestFileEstrangeiro:
         assert "Camus" in (updated.new_author or "")
         assert updated.new_year == "1990"
         assert updated.new_publisher == "Record"
+        assert updated.new_classification == "869 - Literatura Portuguesa e Brasileira"
 
     def test_strategy5_used_when_strategy4_finds_nothing(self, tmp_path):
         """Quando título+autor não encontra nada, título sozinho deve ser tentado."""

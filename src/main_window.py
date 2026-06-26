@@ -218,7 +218,8 @@ class MainWindow(QMainWindow):
         )
         self.search_all_action.setEnabled(has_rows)
 
-        _green_keys = ("new_filename", "new_title", "new_author", "new_year", "new_publisher")
+        _green_keys = ("new_filename", "new_title", "new_author", "new_year",
+                       "new_publisher", "new_isbn", "new_classification")
         has_unconfirmed_row = sel_fr is not None and any(
             getattr(sel_fr, k) is not None and not sel_fr.field_confirmed.get(k)
             for k in _green_keys
