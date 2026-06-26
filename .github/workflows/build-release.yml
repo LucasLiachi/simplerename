@@ -1,0 +1,62 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Update version.py
+        shell: python
+        run: |
+          import re
+          version = "${{ steps.version.outputs.VERSION }}"
+          path = "src/version.py"
+          content = open(path).read()
+          content = re.sub(r'__version__ = "[^"]*"', f'__version__ = "{version}"', content)
+          open(path, "w").write(content)
+
+      - name: Build executable with PyInstaller
+        run: |
+          pyinstaller --onefile --windowed ^
+            --icon=resources/icons/simplerename.ico ^
+            --name=SimpleRename ^
+            --add-data="resources;resources" ^
+            main.py
+
+      - name: Build NSIS Installer
+        uses: joncloud/makensis-action@v4
+        with:
+          script-file: installer.nsi
+          arguments: /DVERSION=${{ steps.version.outputs.VERSION }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Simple Rename v${{ steps.version.outputs.VERSION }}"
+          files: |
+            dist/SimpleRename.exe
+            SimpleRename-Setup-${{ steps.version.outputs.VERSION }}.exe
