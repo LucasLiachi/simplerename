@@ -1,7 +1,7 @@
 # Feature: Layout Dual-Faixa — Estado Atual vs. Proposta de Mudança
 **ID:** FEATURE-006
 **Epic:** EPIC-001
-**Status:** Planned
+**Status:** In Progress
 **Priority:** P1 (critical)
 **Author:** PP-Planner
 **Created:** 2026-06-26
