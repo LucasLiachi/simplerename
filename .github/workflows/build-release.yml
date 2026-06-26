@@ -39,6 +39,17 @@ jobs:
           content = re.sub(r'__version__ = "[^"]*"', f'__version__ = "{version}"', content)
           open(path, "w").write(content)
 
+      - name: Generate valid ICO
+        shell: python
+        run: |
+          from PIL import Image, ImageDraw
+          img = Image.new("RGBA", (256, 256), (33, 150, 243, 255))
+          draw = ImageDraw.Draw(img)
+          draw.ellipse([48, 48, 208, 208], fill=(255, 255, 255, 220))
+          draw.text((100, 95), "SR", fill=(33, 150, 243, 255))
+          img.save("resources/icons/simplerename.ico", format="ICO",
+                   sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+
       - name: Build executable with PyInstaller
         shell: bash
         run: |

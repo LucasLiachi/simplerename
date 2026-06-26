@@ -1,28 +1,26 @@
 ; SimpleRename Installer Script
 
-; Versão injetada pelo CI via /DVERSION=X.Y.Z
+; Versao injetada pelo CI via /DVERSION=X.Y.Z
 !ifndef VERSION
   !define VERSION "0.0.0-dev"
 !endif
 
 !define APPNAME "SimpleRename"
-!define COMPANYNAME "simplerename"
-!define DESCRIPTION "A lightweight file renaming tool"
-!define INSTALLSIZE 20000
+!define COMPANYNAME "LucasLiachi"
+!define DESCRIPTION "Organizador de bibliotecas PDF para Windows"
+!define INSTALLSIZE 30000
 
 ; Include Modern UI
 !include "MUI2.nsh"
 
 ; General
 Name "${APPNAME} ${VERSION}"
-OutFile "dist-windows/SimpleRename-Setup-${VERSION}.exe"
+OutFile "SimpleRename-Setup-${VERSION}.exe"
 InstallDir "$PROGRAMFILES64\${APPNAME}"
 InstallDirRegKey HKLM "Software\${APPNAME}" "Install_Dir"
 
 ; Interface Configuration
-!define MUI_ICON "resources/icons/simplerename.ico"
-!define MUI_HEADERIMAGE
-!define MUI_HEADERIMAGE_RIGHT
+!define MUI_ICON "resources\icons\simplerename.ico"
 !define MUI_ABORTWARNING
 
 ; Pages
@@ -35,56 +33,42 @@ InstallDirRegKey HKLM "Software\${APPNAME}" "Install_Dir"
 ; Languages
 !insertmacro MUI_LANGUAGE "English"
 
-; Installer sections
+; Installer section
 Section "Install"
-    SetOutPath $INSTDIR
-    
-    ; Application files
-    File "dist-windows\SimpleRename.exe"
-    
-    ; Create Program Files directory structure
-    CreateDirectory "$INSTDIR\resources"
-    CreateDirectory "$INSTDIR\resources\icons"
-    
-    ; Copy resources
-    File /r "resources\icons\simplerename.ico" "$INSTDIR\resources\icons\"
-    
-    ; Create shortcuts
+    SetOutPath "$INSTDIR"
+
+    ; Application executable (built by PyInstaller into dist/)
+    File "dist\SimpleRename.exe"
+
+    ; Icon resource
+    SetOutPath "$INSTDIR\resources\icons"
+    File "resources\icons\simplerename.ico"
+    SetOutPath "$INSTDIR"
+
+    ; Shortcuts
     CreateDirectory "$SMPROGRAMS\${APPNAME}"
     CreateShortcut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\SimpleRename.exe"
     CreateShortcut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\SimpleRename.exe"
-    
-    ; Write uninstaller information to registry
+
+    ; Registry — uninstall entry
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME} ${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" "$INSTDIR\uninstall.exe"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayIcon" "$INSTDIR\resources\icons\simplerename.ico"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${COMPANYNAME}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "URLInfoAbout" "https://github.com/simplerename/simplerename"
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "NoModify" 1
-    
-    ; Create uninstaller
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 SectionEnd
 
 ; Uninstaller section
 Section "Uninstall"
-    ; Remove application files
     Delete "$INSTDIR\SimpleRename.exe"
     Delete "$INSTDIR\uninstall.exe"
-    
-    ; Remove resources
     RMDir /r "$INSTDIR\resources"
-    
-    ; Remove shortcuts
     Delete "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk"
     Delete "$DESKTOP\${APPNAME}.lnk"
     RMDir "$SMPROGRAMS\${APPNAME}"
-    
-    ; Remove registry keys
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
     DeleteRegKey HKLM "Software\${APPNAME}"
-    
-    ; Remove installation directory
     RMDir "$INSTDIR"
 SectionEnd
