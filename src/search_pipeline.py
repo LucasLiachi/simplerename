@@ -255,6 +255,7 @@ class SearchPipeline:
         row.new_author    = _normalize_author(getattr(result, "authors", []) or []) or None
         row.new_year      = result.year
         row.new_publisher = _validate_publisher(result.publisher)
+        row.new_isbn      = result.isbn13 or None
 
         # Gerar new_filename via CatalogingEngine
         meta = BookMetadata(
@@ -269,7 +270,8 @@ class SearchPipeline:
         # Badge de origem e estado âmbar (não confirmado)
         source = result.source.value
         badge  = "OL" if "library" in source else "GB" if "google" in source else "cache"
-        for key in ("new_filename", "new_title", "new_author", "new_year", "new_publisher"):
+        for key in ("new_filename", "new_title", "new_author",
+                    "new_year", "new_publisher", "new_isbn"):
             if getattr(row, key):
                 row.field_origins[key]   = badge
                 row.field_confirmed[key] = False

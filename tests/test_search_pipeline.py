@@ -272,6 +272,21 @@ class TestSearchPipeline:
         pipeline.apply_result(row, _make_result(source=LookupSource.GOOGLE_BOOKS))
         assert row.field_origins.get("new_title") == "GB"
 
+    def test_apply_result_populates_new_isbn(self):
+        """apply_result deve preencher new_isbn com result.isbn13."""
+        pipeline, _, _ = _make_pipeline()
+        row = FileRow(current_filename="book", file_extension=".pdf")
+        pipeline.apply_result(row, _make_result(isbn13="9788535902778"))
+        assert row.new_isbn == "9788535902778"
+        assert row.field_confirmed.get("new_isbn") is False
+
+    def test_apply_result_no_isbn_leaves_none(self):
+        """apply_result sem isbn13 deve deixar new_isbn como None."""
+        pipeline, _, _ = _make_pipeline()
+        row = FileRow(current_filename="book", file_extension=".pdf")
+        pipeline.apply_result(row, _make_result(isbn13=None))
+        assert row.new_isbn is None
+
     def test_apply_result_sets_new_filename(self):
         """apply_result deve preencher new_filename via CatalogingEngine."""
         pipeline, _, catalog = _make_pipeline()

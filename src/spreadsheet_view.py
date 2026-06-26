@@ -26,8 +26,8 @@ class GroupedHeaderView(QHeaderView):
     GROUP_HEIGHT = 20
     GROUPS = [
         ("Estado Atual",        list(range(0, 8))),
-        ("Proposta de Mudanca", list(range(8, 13))),
-        ("",                    [13]),
+        ("Proposta de Mudanca", list(range(8, 14))),
+        ("",                    [14]),
     ]
 
     def __init__(self, parent=None):
@@ -128,7 +128,8 @@ class SpreadsheetView(DraggableTableView):
         self.setColumnWidth(10, 140)  # novo autor
         self.setColumnWidth(11, 60)   # novo ano
         self.setColumnWidth(12, 130)  # nova editora
-        self.setColumnWidth(13, 200)  # preview
+        self.setColumnWidth(13, 120)  # novo isbn
+        self.setColumnWidth(14, 200)  # preview
 
         self.setSortingEnabled(True)
         self.setAlternatingRowColors(False)  # cores gerenciadas pelo model
