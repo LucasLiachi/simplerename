@@ -1,40 +1,84 @@
 """
 Spreadsheet-like view component for file name editing.
 Responsible for:
-- Displaying file list in tabular format
-- Enabling direct name editing
+- Displaying file list in tabular format with dual-band layout (blue/green)
+- Enabling direct name editing on green (proposal) band
 - Managing multiple file selection
 - Providing change previews
 
 Dependencies:
-- file_manager.py: For data model (FileTableModel)
+- file_manager.py: For data model (DualBandTableModel)
+- fill_handle.py: For drag-fill behaviour
 """
 import os
 from PyQt6.QtWidgets import QTableView, QHeaderView, QInputDialog
 from PyQt6.QtCore import Qt, QRect
-from .file_manager import FileTableModel
+from PyQt6.QtGui import QPainter, QColor, QFont
+from .file_manager import DualBandTableModel
 from .fill_handle import DraggableTableView
 from typing import Dict, List
 from .fill_handle import FillHandle
-from PyQt6.QtGui import QPainter, QColor
 
-class SpreadsheetView(DraggableTableView):  # Corrigida a herança
+
+class GroupedHeaderView(QHeaderView):
+    """Cabecalho duplo: linha de grupo (azul/verde) acima do nome de cada coluna."""
+
+    GROUP_HEIGHT = 20
+    GROUPS = [
+        ("Estado Atual",        list(range(0, 8)),   QColor(181, 212, 244)),
+        ("Proposta de Mudanca", list(range(8, 13)),  QColor(159, 225, 203)),
+        ("",                    [13],                QColor(220, 220, 220)),
+    ]
+
     def __init__(self, parent=None):
-        super().__init__(parent)  # Chama o construtor correto
-        self.model = FileTableModel()  # Cria uma instância do modelo
+        """Inicializa o cabecalho com altura extra para a linha de grupo."""
+        super().__init__(Qt.Orientation.Horizontal, parent)
+        self.setFixedHeight(self.sectionSizeFromContents(0).height() + self.GROUP_HEIGHT)
+
+    def paintSection(self, painter: QPainter, rect: QRect, logical_index: int) -> None:
+        """Pinta a secao: nome da coluna na metade inferior e rotulo do grupo na metade superior."""
+        painter.save()
+        # Linha inferior: nome da coluna (comportamento padrao)
+        col_rect = QRect(rect.x(), rect.y() + self.GROUP_HEIGHT,
+                         rect.width(), rect.height() - self.GROUP_HEIGHT)
+        super().paintSection(painter, col_rect, logical_index)
+        # Linha superior: rotulo do grupo (pintado apenas para a primeira coluna do grupo)
+        for label, cols, color in self.GROUPS:
+            if logical_index == cols[0]:
+                total_w = sum(self.sectionSize(c) for c in cols)
+                grp_rect = QRect(rect.x(), rect.y(), total_w, self.GROUP_HEIGHT)
+                painter.fillRect(grp_rect, color)
+                painter.setPen(Qt.GlobalColor.black)
+                font = QFont()
+                font.setBold(True)
+                font.setPointSize(8)
+                painter.setFont(font)
+                painter.drawText(grp_rect, Qt.AlignmentFlag.AlignCenter, label)
+                painter.drawRect(grp_rect)
+                break
+        painter.restore()
+
+
+class SpreadsheetView(DraggableTableView):
+    """Planilha editavel com layout dual-faixa azul (atual) e verde (proposta)."""
+
+    def __init__(self, parent=None):
+        """Inicializa a view com DualBandTableModel e GroupedHeaderView."""
+        super().__init__(parent)
+        self.model = DualBandTableModel()
         self.setModel(self.model)
         self.current_directory = None
-        self.custom_columns = []  # Lista para armazenar colunas customizadas
-        self.prepare_rename_callback = None  # Callback para o botão Prepare Rename
+        self.prepare_rename_callback = None  # Callback para o botao Prepare Rename
+
+        # Cabecalho dual-band
+        header = GroupedHeaderView(self)
+        self.setHorizontalHeader(header)
 
         # Configure view
         self.setup_appearance()
         self.setEditTriggers(QTableView.EditTrigger.DoubleClicked |
                             QTableView.EditTrigger.EditKeyPressed |
                             QTableView.EditTrigger.AnyKeyPressed)
-
-        # Conectar evento de clique no cabeçalho
-        self.horizontalHeader().sectionClicked.connect(self.header_clicked)
 
         # Fill handle state
         self.fill_handle = FillHandle(self.viewport())
@@ -48,7 +92,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         # Conecta o sinal do fill handle
         self.fill_handle.dragStarted.connect(self.startFillDrag)
 
-        # Força atualização do viewport quando células são modificadas
+        # Forca atualizacao do viewport quando celulas sao modificadas
         self.viewport().update()
 
         # Estado do preenchimento por arraste (fill handle)
@@ -57,53 +101,26 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         self.drag_start_col = None
         self.last_highlighted_range = None
 
-    def header_clicked(self, logical_index: int) -> None:
-        """Handle header column clicks, opening dialog to add a custom column when '+' is clicked."""
-        # Se clicou na coluna '+'
-        if self.model.headers[logical_index] == '+':
-            title, ok = QInputDialog.getText(self, 'Nova Coluna', 'Nome da coluna:')
-            if ok and title:
-                self.add_custom_column(title)
-
-    def add_custom_column(self, title: str, data_function=None) -> None:
-        """Adiciona uma nova coluna customizada
-        Args:
-            title: Título da coluna
-            data_function: Função que retorna o dado para cada arquivo
-        """
-        column_info = {
-            'title': title,
-            'data_function': data_function or (lambda x: '')
-        }
-        self.custom_columns.append(column_info)
-        self.model.add_custom_column(title)
-        self.setup_appearance()  # Reconfigura as colunas
-
     def setup_appearance(self) -> None:
-        """Configure column resize modes and visual options."""
-        header = self.horizontalHeader()
-
-        # Configura colunas fixas
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Name
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Format
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # + button
-        header.resizeSection(2, 30)  # Set '+' column width to 30 pixels
-
-        # Configura colunas customizadas
-        custom_col_start = 3
-        for i in range(len(self.custom_columns)):
-            col_idx = custom_col_start + i
-            header.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.ResizeToContents)
-
-        # Configura coluna New Name (penúltima) e Preview (última)
-        new_name_col = custom_col_start + len(self.custom_columns)
-        preview_col = new_name_col + 1
-        header.setSectionResizeMode(new_name_col, QHeaderView.ResizeMode.Stretch)
-        if preview_col < self.model.columnCount():
-            header.setSectionResizeMode(preview_col, QHeaderView.ResizeMode.Stretch)
+        """Configure column widths and visual options."""
+        self.horizontalHeader().setStretchLastSection(False)
+        self.setColumnWidth(0, 40)    # qualidade
+        self.setColumnWidth(1, 180)   # nome atual
+        self.setColumnWidth(2, 60)    # formato
+        self.setColumnWidth(3, 160)   # titulo atual
+        self.setColumnWidth(4, 140)   # autor atual
+        self.setColumnWidth(5, 120)   # isbn
+        self.setColumnWidth(6, 60)    # ano atual
+        self.setColumnWidth(7, 130)   # editora atual
+        self.setColumnWidth(8, 180)   # novo nome
+        self.setColumnWidth(9, 160)   # novo titulo
+        self.setColumnWidth(10, 140)  # novo autor
+        self.setColumnWidth(11, 60)   # novo ano
+        self.setColumnWidth(12, 130)  # nova editora
+        self.setColumnWidth(13, 200)  # preview
 
         self.setSortingEnabled(True)
-        self.setAlternatingRowColors(True)
+        self.setAlternatingRowColors(False)  # cores gerenciadas pelo model
 
     def load_directory(self, directory: str) -> None:
         """Load all files from the given directory into the model."""
@@ -113,33 +130,24 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             if entry.is_file():
                 name = entry.name
                 base_name, ext = os.path.splitext(name)
-                format = ext[1:].lower() or 'none'
                 files.append({
-                    'name': name,  # Nome completo
-                    'new_name': base_name,  # Apenas nome, sem extensão
+                    'name': name,
                     'path': entry.path,
-                    'format': format,
-                    'extension': ext
+                    'extension': ext,
                 })
         self.model.load_files(files)
 
-        # Adicionar colunas de metadados se ainda não existirem
-        meta_cols = ['Título', 'Autor', 'ISBN', 'Ano', 'Editora']
-        for col in meta_cols:
-            if col not in self.model.custom_columns:
-                self.model.add_custom_column(col)
-
-        # Disparar extração em background para PDFs
+        # Disparar extracao em background para PDFs
         pdf_files = [
-            (row, file['path'])
-            for row, file in enumerate(self.model.files)
-            if file.get('format', '').lower() == 'pdf'
+            (row, f['path'])
+            for row, f in enumerate(files)
+            if f.get('extension', '').lower() == '.pdf'
         ]
         if pdf_files:
             self._start_metadata_extraction(pdf_files)
 
     def _start_metadata_extraction(self, pdf_files: list) -> None:
-        """Inicia extração de metadados em thread background.
+        """Inicia extracao de metadados em thread background.
 
         Args:
             pdf_files: Lista de tuplas (row_index, caminho_absoluto_pdf).
@@ -153,82 +161,39 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         self._metadata_worker.start()
 
     def _on_metadata_ready(self, row: int, meta: object) -> None:
-        """Recebe metadados extraídos e atualiza o modelo.
+        """Recebe metadados extraidos e atualiza o modelo.
 
         Args:
-            row: Índice da linha correspondente ao PDF processado.
-            meta: Instância de BookMetadata com os campos extraídos.
+            row: Indice da linha correspondente ao PDF processado.
+            meta: Instancia de BookMetadata com os campos extraidos.
         """
         self.model.set_metadata(row, meta)
 
     def get_changes(self) -> List[tuple]:
         """Return list of (old_path, new_name) for files that were modified."""
-        changes = []
-        for file in self.model.files:
-            if os.path.splitext(file['name'])[0] != file['new_name']:
-                # Combinar novo nome com extensão original
-                new_full_name = file['new_name'] + file['extension']
-                changes.append((file['path'], new_full_name))
-        return changes
+        return self.model.get_changes()
 
-    def update_preview(self, preview_names: Dict[str, str]) -> None:
-        """Update new names with preview values."""
-        for file in self.model.files:
-            original_name = file['name']
-            if original_name in preview_names:
-                file['new_name'] = os.path.splitext(preview_names[original_name])[0]
+    def isEditableCell(self, row: int, column: int) -> bool:
+        """Verifica se uma celula e editavel (faixa verde)."""
+        if not self.model:
+            return False
+        index = self.model.index(row, column)
+        if not index.isValid():
+            return False
+        return bool(self.model.flags(index) & Qt.ItemFlag.ItemIsEditable)
 
-        # Notify view of data change
-        self.model.layoutChanged.emit()
-
-    def get_custom_columns_data(self) -> List[Dict[str, str]]:
-        """Coleta dados das colunas customizadas para cada linha."""
-        custom_data = []
-        model = self.model
-
-        # Identifica o índice das colunas customizadas (entre '+' e 'New Name')
-        new_name_idx = model._new_name_col_index()
-        custom_cols = range(3, new_name_idx)  # Índices das colunas customizadas (após '+')
-
-        # Coleta dados para cada linha
-        for row in range(model.rowCount()):
-            row_data = []
-            for col in custom_cols:
-                index = model.index(row, col)
-                text = model.data(index, Qt.ItemDataRole.DisplayRole)
-                if text:  # Adiciona apenas se não estiver vazio
-                    row_data.append(text)
-
-            # Cria dicionário com os dados da linha
-            file_data = {
-                'row': row,
-                'original_name': model.data(model.index(row, 0), Qt.ItemDataRole.DisplayRole),
-                'custom_text': ' '.join(row_data)
-            }
-            custom_data.append(file_data)
-
-        return custom_data
-
-    def prepare_rename_files(self) -> None:
-        """Prepara os novos nomes baseados nas colunas customizadas."""
-        custom_data = self.get_custom_columns_data()
-        model = self.model
-
-        for data in custom_data:
-            row = data['row']
-            new_text = data['custom_text']
-
-            if new_text:  # Atualiza apenas se houver texto para concatenar
-                # Atualiza a coluna New Name (penúltima)
-                new_name_idx = model._new_name_col_index()
-                new_name_index = model.index(row, new_name_idx)
-                model.setData(new_name_index, new_text, Qt.ItemDataRole.EditRole)
-
-        # Notifica que os dados foram alterados
-        self.model.layoutChanged.emit()
+    def getFillHandleRect(self, cell_rect: QRect) -> QRect:
+        """Retorna o retangulo do handle de preenchimento."""
+        handle_size = 8
+        return QRect(
+            cell_rect.right() - handle_size,
+            cell_rect.bottom() - handle_size,
+            handle_size,
+            handle_size
+        )
 
     def updateFillHandlePosition(self, index) -> None:
-        """Atualiza a posição do fill handle para a célula atual."""
+        """Atualiza a posicao do fill handle para a celula atual."""
         if not index.isValid():
             self.fill_handle.hide()
             return
@@ -238,7 +203,6 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             self.fill_handle.hide()
             return
 
-        # Ajusta posição considerando o viewport
         viewport_pos = self.viewport().mapToGlobal(rect.bottomRight())
         handle_pos = self.mapFromGlobal(viewport_pos)
 
@@ -246,7 +210,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             handle_pos.x() - self.fill_handle.width(),
             handle_pos.y() - self.fill_handle.height()
         )
-        self.fill_handle.raise_()  # Traz para frente
+        self.fill_handle.raise_()
         self.fill_handle.show()
         self.current_cell = index
 
@@ -259,13 +223,11 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             if index.isValid():
                 row, col = index.row(), index.column()
 
-                # Verifica se clicou no handle de uma célula editável
                 if self.isEditableCell(row, col):
                     cell_rect = self.visualRect(index)
                     handle_rect = self.getFillHandleRect(cell_rect)
 
                     if handle_rect.contains(pos):
-                        # Inicia fill drag manual (sem usar self.dragging)
                         self.drag_start_row = row
                         self.drag_start_col = col
                         self.drag_value = self.model.data(index, Qt.ItemDataRole.EditRole)
@@ -275,7 +237,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         super().mousePressEvent(event)
 
     def startFillDrag(self, start_pos=None) -> None:
-        """Inicia operação de arrastar e preencher."""
+        """Inicia operacao de arrastar e preencher."""
         if self.current_cell and self.current_cell.isValid():
             self.is_filling = True
             self.drag_start_cell = self.current_cell
@@ -313,7 +275,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         super().mouseReleaseEvent(event)
 
     def completeFill(self) -> None:
-        """Completa a operação de preenchimento via FillHandle widget."""
+        """Completa a operacao de preenchimento via FillHandle widget."""
         if not self.fill_start_value:
             return
 
@@ -321,14 +283,11 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         start_row = self.drag_start_cell.row()
         col = self.drag_start_cell.column()
 
-        # Inicia atualização em lote
         model.beginResetModel()
-
         try:
             for index in self.highlighted_cells:
-                if index.row() != start_row:  # Não atualiza célula inicial
+                if index.row() != start_row:
                     model.setData(index, self.fill_start_value, Qt.ItemDataRole.EditRole)
-
         finally:
             model.endResetModel()
 
@@ -344,7 +303,7 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         super().keyPressEvent(event)
 
     def leaveEvent(self, event) -> None:
-        """Limpa o highlight quando o mouse sai da área."""
+        """Limpa o highlight quando o mouse sai da area."""
         if self.is_filling:
             self.highlighted_cells.clear()
             self.viewport().update()
@@ -354,27 +313,23 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
         """Paint fill-handle highlights and handle squares on editable cells."""
         super().paintEvent(event)
 
-        if self.highlighted_cells:
-            painter = QPainter(self.viewport())
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            highlight_color = QColor(0, 120, 215, 50)
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        highlight_color = QColor(0, 120, 215, 50)
 
+        if self.highlighted_cells:
             for index in self.highlighted_cells:
                 rect = self.visualRect(index)
                 if rect.isValid():
                     painter.fillRect(rect, highlight_color)
 
-        painter = QPainter(self.viewport())
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Desenha highlight das células
+        # Desenha highlight das celulas
         if self.last_highlighted_range:
-            highlight_color = QColor(0, 120, 215, 50)
             for index in self.last_highlighted_range:
                 rect = self.visualRect(index)
                 painter.fillRect(rect, highlight_color)
 
-        # Desenha handles de preenchimento quando não há fill drag ativo
+        # Desenha handles de preenchimento quando nao ha fill drag ativo
         if self.drag_value is None:
             handle_color = QColor(0, 120, 215)
             for row in range(self.model.rowCount()):
@@ -385,54 +340,25 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
                         handle_rect = self.getFillHandleRect(cell_rect)
                         painter.fillRect(handle_rect, handle_color)
 
-    def isEditableCell(self, row: int, column: int) -> bool:
-        """Verifica se uma célula é editável (coluna customizada ou New Name, não Preview)."""
-        if not self.model:
-            return False
-
-        index = self.model.index(row, column)
-        if not index.isValid():
-            return False
-
-        # Custom columns + New Name are editable; Preview (last col) is not
-        custom_col_start = 3
-        new_name_col = self.model._new_name_col_index()
-        return custom_col_start <= column <= new_name_col
-
-    def getFillHandleRect(self, cell_rect: QRect) -> QRect:
-        """Retorna o retângulo do handle de preenchimento."""
-        handle_size = 8
-        return QRect(
-            cell_rect.right() - handle_size,
-            cell_rect.bottom() - handle_size,
-            handle_size,
-            handle_size
-        )
-
     def highlightCells(self, start_row: int, end_row: int, column: int) -> None:
-        """Destaca as células que serão preenchidas."""
-        # Limpa destaque anterior
+        """Destaca as celulas que serao preenchidas."""
         self.clearHighlight()
-
-        # Calcula novo intervalo
         self.last_highlighted_range = []
         for row in range(min(start_row, end_row), max(start_row, end_row) + 1):
             if self.isEditableCell(row, column):
                 index = self.model.index(row, column)
                 self.last_highlighted_range.append(index)
-
-        # Força atualização visual
         self.viewport().update()
 
     def clearHighlight(self) -> None:
-        """Limpa o destaque das células."""
+        """Limpa o destaque das celulas."""
         if self.last_highlighted_range:
             for index in self.last_highlighted_range:
                 self.viewport().update(self.visualRect(index))
             self.last_highlighted_range = []
 
     def fillCells(self, start_row: int, end_row: int, column: int) -> None:
-        """Preenche as células com o valor da célula inicial."""
+        """Preenche as celulas com o valor da celula inicial."""
         if not self.drag_value:
             return
 
@@ -446,34 +372,69 @@ class SpreadsheetView(DraggableTableView):  # Corrigida a herança
             self.model.endResetModel()
 
     def replace_spaces(self) -> None:
-        """Replace spaces with underscores in all editable text fields."""
+        """Replace spaces with underscores in all editable text fields (faixa verde)."""
         if not self.model:
             return
 
         model = self.model
         model.beginResetModel()
-
         try:
-            # Get indices of editable columns (custom columns and New Name, not Preview)
-            custom_col_start = 3
-            new_name_col = model._new_name_col_index()
-            editable_cols = list(range(custom_col_start, new_name_col + 1))
-
-            # Process each editable cell
             for row in range(model.rowCount()):
-                for col in editable_cols:
-                    index = model.index(row, col)
-                    current_text = model.data(index, Qt.ItemDataRole.DisplayRole)
-
-                    if current_text and isinstance(current_text, str):
-                        # Replace spaces with underscores
-                        new_text = current_text.replace(' ', '_')
-                        if new_text != current_text:
-                            model.setData(index, new_text, Qt.ItemDataRole.EditRole)
-
+                for col in range(model.columnCount()):
+                    if self.isEditableCell(row, col):
+                        index = model.index(row, col)
+                        current_text = model.data(index, Qt.ItemDataRole.DisplayRole)
+                        if current_text and isinstance(current_text, str):
+                            new_text = current_text.replace(' ', '_')
+                            if new_text != current_text:
+                                model.setData(index, new_text, Qt.ItemDataRole.EditRole)
             model.endResetModel()
             self.viewport().update()
-
         except Exception as e:
             model.endResetModel()
             raise e
+
+    def prepare_rename_files(self) -> None:
+        """Prepara os novos nomes baseados nos campos da faixa verde (new_author + new_title + new_year)."""
+        for row_idx in range(self.model.rowCount()):
+            file_row = self.model.rows[row_idx]
+            parts = []
+            if file_row.new_author:
+                parts.append(file_row.new_author)
+            if file_row.new_title:
+                parts.append(file_row.new_title)
+            if file_row.new_year:
+                parts.append(file_row.new_year)
+            if parts:
+                suggested = " - ".join(parts)
+                file_row.new_filename = suggested
+                file_row.field_origins["new_filename"] = "auto"
+        if self.model.rowCount() > 0:
+            self.model.dataChanged.emit(
+                self.model.index(0, 0),
+                self.model.index(self.model.rowCount() - 1, self.model.columnCount() - 1)
+            )
+
+    def update_preview(self, preview_names: Dict[str, str]) -> None:
+        """Update new_filename with preview values (compatibilidade legado)."""
+        for row_idx, file_row in enumerate(self.model.rows):
+            original_name = file_row.current_filename + file_row.file_extension
+            if original_name in preview_names:
+                base = os.path.splitext(preview_names[original_name])[0]
+                file_row.new_filename = base
+        self.model.layoutChanged.emit()
+
+    def get_custom_columns_data(self) -> List[Dict[str, str]]:
+        """Coleta dados relevantes para cada linha (compatibilidade legado)."""
+        result = []
+        for row_idx, file_row in enumerate(self.model.rows):
+            result.append({
+                'row': row_idx,
+                'original_name': file_row.current_filename,
+                'custom_text': ' '.join(filter(None, [
+                    file_row.new_author,
+                    file_row.new_title,
+                    file_row.new_year,
+                ])),
+            })
+        return result

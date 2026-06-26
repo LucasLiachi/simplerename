@@ -115,6 +115,19 @@ class MainWindow(QMainWindow):
         self.redo_btn.setToolTip("Ctrl+Y — refazer último rename")
         self.redo_btn.clicked.connect(self.redo_rename)
 
+        # Confirm / Clear proposal buttons (FEATURE-006)
+        self.confirm_row_btn = QPushButton("✓ Confirmar Linha")
+        self.confirm_row_btn.setToolTip("Aceitar todas as sugestoes da linha selecionada")
+        self.confirm_row_btn.clicked.connect(self._confirm_selected_row)
+
+        self.clear_proposal_btn = QPushButton("✗ Limpar Proposta")
+        self.clear_proposal_btn.setToolTip("Apagar sugestoes da linha selecionada")
+        self.clear_proposal_btn.clicked.connect(self._clear_selected_proposal)
+
+        self.confirm_all_btn = QPushButton("✓✓ Confirmar Todos")
+        self.confirm_all_btn.setToolTip("Aceitar todas as sugestoes de todas as linhas")
+        self.confirm_all_btn.clicked.connect(self._confirm_all)
+
         # Add buttons to layout
         button_layout.addWidget(prepare_button)
         button_layout.addWidget(replace_spaces_button)
@@ -124,6 +137,9 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(self.apply_folders_btn)
         button_layout.addWidget(self.undo_btn)
         button_layout.addWidget(self.redo_btn)
+        button_layout.addWidget(self.confirm_row_btn)
+        button_layout.addWidget(self.clear_proposal_btn)
+        button_layout.addWidget(self.confirm_all_btn)
         button_layout.addStretch()  # Alinha os botões à esquerda
 
         # Layout assembly
@@ -378,13 +394,33 @@ class MainWindow(QMainWindow):
     def _get_cataloging_items(self) -> list:
         """Coleta (BookMetadata, original_path, categories) de cada linha da planilha."""
         items = []
-        for row in range(self.spreadsheet_view.model.rowCount()):
-            meta = self.spreadsheet_view.model.get_metadata(row)
+        model = self.spreadsheet_view.model
+        for row in range(model.rowCount()):
+            meta = model.get_metadata(row)
             if meta is None:
                 continue
-            file_info = self.spreadsheet_view.model.files[row]
-            original_path = file_info.get('path', '')
+            # DualBandTableModel armazena o caminho em rows[row].original_path
+            original_path = model.rows[row].original_path
             categories: list = []
             items.append((meta, original_path, categories))
         return items
+
+    def _confirm_selected_row(self) -> None:
+        """Confirma todas as sugestoes da linha selecionada na planilha."""
+        indexes = self.spreadsheet_view.selectedIndexes()
+        if not indexes:
+            return
+        self.spreadsheet_view.model.confirm_row(indexes[0].row())
+
+    def _clear_selected_proposal(self) -> None:
+        """Apaga as sugestoes da linha selecionada na planilha."""
+        indexes = self.spreadsheet_view.selectedIndexes()
+        if not indexes:
+            return
+        self.spreadsheet_view.model.clear_proposal(indexes[0].row())
+
+    def _confirm_all(self) -> None:
+        """Confirma todas as sugestoes de todas as linhas."""
+        self.spreadsheet_view.model.confirm_all()
+        self.statusBar().showMessage("Todas as sugestoes confirmadas")
 
