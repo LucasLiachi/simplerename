@@ -227,12 +227,20 @@ class TestSearchPipeline:
         assert result is None
 
     def test_low_confidence_skipped(self):
-        """Resultado com confidence < 0.5 deve ser ignorado."""
+        """Resultado com confidence < 0.4 deve ser ignorado."""
         pipeline, lookup, _ = _make_pipeline()
         lookup.lookup.return_value = [_make_result(confidence=0.3)]
         row = FileRow(current_isbn="9788535902778", current_filename="book")
         result = pipeline.run(row)
         assert result is None
+
+    def test_borderline_confidence_accepted(self):
+        """Resultado com confidence == 0.4 deve ser aceito (limiar exato)."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result(confidence=0.4)]
+        row = FileRow(current_isbn="9788535902778", current_filename="book")
+        result = pipeline.run(row)
+        assert result is not None
 
     def test_apply_result_populates_green_band(self):
         """apply_result deve preencher a faixa verde da FileRow."""
@@ -284,3 +292,67 @@ class TestSearchPipeline:
         lookup.lookup.return_value = []
         result = pipeline.run(row)
         assert result is None
+
+
+class TestStrategyTitleOnly:
+    """Testes para SearchPipeline._strategy_title_only()."""
+
+    def test_uses_current_title_when_available(self):
+        """Deve usar current_title do PDF quando disponível."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result()]
+        row = FileRow(
+            current_filename="arquivo_sem_padrao",
+            current_title="O Estrangeiro",
+        )
+        result = pipeline._strategy_title_only(row)
+        assert result is not None
+        lookup.lookup.assert_called_once()
+        meta_used = lookup.lookup.call_args[0][0]
+        assert meta_used.title == "O Estrangeiro"
+        assert meta_used.author == ""
+
+    def test_falls_back_to_filename_title_when_no_current_title(self):
+        """Sem current_title, deve extrair título do nome do arquivo."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result()]
+        row = FileRow(current_filename="O Estrangeiro - Albert Camus")
+        result = pipeline._strategy_title_only(row)
+        assert result is not None
+        meta_used = lookup.lookup.call_args[0][0]
+        assert meta_used.title == "O Estrangeiro"
+        assert meta_used.author == ""
+
+    def test_returns_none_when_title_too_short(self):
+        """Título com menos de 3 caracteres deve retornar None."""
+        pipeline, lookup, _ = _make_pipeline()
+        row = FileRow(current_filename="ab", current_title="ab")
+        result = pipeline._strategy_title_only(row)
+        assert result is None
+        lookup.lookup.assert_not_called()
+
+    def test_run_reaches_strategy5_when_no_author_in_filename(self):
+        """
+        Pipeline deve usar título sozinho quando nenhuma estratégia anterior encontra resultado.
+        """
+        pipeline, lookup, _ = _make_pipeline()
+
+        def side_effect(meta):
+            if meta.author == "" and meta.title == "Solaris":
+                return [_make_result(title="Solaris")]
+            return []
+        lookup.lookup.side_effect = side_effect
+
+        row = FileRow(current_filename="Solaris", current_title="Solaris")
+        result = pipeline.run(row)
+        assert result is not None
+        assert result.title == "Solaris"
+
+    def test_strategy5_not_called_if_strategy4_succeeds(self):
+        """Estratégia 5 não deve ser chamada se a estratégia 4 já retornou resultado."""
+        pipeline, lookup, _ = _make_pipeline()
+        lookup.lookup.return_value = [_make_result(confidence=0.6)]
+        row = FileRow(current_filename="Dom Casmurro - Machado de Assis")
+        with patch.object(pipeline, "_strategy_title_only") as mock_s5:
+            pipeline.run(row)
+        mock_s5.assert_not_called()

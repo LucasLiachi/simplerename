@@ -7,6 +7,7 @@ from src.metadata_lookup import (
     lookup_ol_by_isbn, lookup_ol_by_title,
     lookup_gb_by_isbn, _get_json,
 )
+import pathlib
 
 
 OL_BOOK_RESPONSE = {
@@ -106,19 +107,26 @@ class TestMetadataLookupService:
                 results = svc.lookup(meta)
         assert results == []
 
-    def test_results_sorted_by_confidence(self, tmp_path):
+    def test_text_to_isbn_promotes_isbn_result(self, tmp_path):
+        """Quando busca por texto retorna ISBN, o resultado final vem do lookup por ISBN."""
         svc = self._make_service(tmp_path)
-        meta = BookMetadata(title="Livro")
-        r1 = LookupResult(title="Livro A", authors=[], isbn13=None,
-                          year=None, publisher=None, confidence=0.6,
-                          source=LookupSource.OPEN_LIBRARY)
-        r2 = LookupResult(title="Livro B", authors=[], isbn13="9788535902778",
-                          year=None, publisher=None, confidence=0.9,
-                          source=LookupSource.OPEN_LIBRARY)
-        with patch("src.metadata_lookup.lookup_ol_by_title", return_value=[r1, r2]):
-            with patch.object(svc, "_rate_limit"):
-                results = svc.lookup(meta)
-        assert results[0].confidence >= results[1].confidence
+        text_result = LookupResult(
+            title="Dom Casmurro", authors=["Machado de Assis"],
+            isbn13="9788535902778", year=None, publisher=None,
+            confidence=0.6, source=LookupSource.OPEN_LIBRARY,
+        )
+        isbn_result = LookupResult(
+            title="Dom Casmurro", authors=["Machado de Assis"],
+            isbn13="9788535902778", year="1899", publisher="Globo",
+            confidence=0.9, source=LookupSource.OPEN_LIBRARY,
+        )
+        with patch("src.metadata_lookup.lookup_ol_by_title", return_value=[text_result]):
+            with patch.object(svc, "_lookup_by_isbn", return_value=[isbn_result]):
+                with patch.object(svc, "_rate_limit"):
+                    results = svc.lookup(BookMetadata(title="Dom Casmurro"))
+        assert results[0].publisher == "Globo"
+        assert results[0].year == "1899"
+        assert results[0].confidence == 0.9
 
     def test_lookup_fallback_to_title_when_no_isbn(self, tmp_path):
         svc = self._make_service(tmp_path)
@@ -131,3 +139,131 @@ class TestMetadataLookupService:
                     results = svc.lookup(meta)
         mock_title.assert_called_once()
         assert results == []
+
+
+class TestLookupByTitleThenIsbn:
+    """Testes para MetadataLookupService._lookup_by_title_then_isbn()."""
+
+    def _make_service(self, tmp_path):
+        svc = MetadataLookupService.__new__(MetadataLookupService)
+        svc._api_key = ""
+        svc._cache_path = tmp_path / "isbn_cache.json"
+        svc._cache = {}
+        svc._last_request_time = 0.0
+        return svc
+
+    def _text_result(self, isbn=None):
+        return LookupResult(
+            title="O Estrangeiro", authors=["Albert Camus"],
+            isbn13=isbn, year=None, publisher=None,
+            confidence=0.6, source=LookupSource.OPEN_LIBRARY,
+        )
+
+    def _isbn_result(self):
+        return LookupResult(
+            title="O Estrangeiro", authors=["Albert Camus"],
+            isbn13="9788520917185", year="1990", publisher="Record",
+            confidence=0.9, source=LookupSource.OPEN_LIBRARY,
+        )
+
+    def test_text_with_isbn_triggers_precise_lookup(self, tmp_path):
+        """Fase 1 com ISBN → fase 2 (lookup por ISBN) deve ser chamada."""
+        svc = self._make_service(tmp_path)
+        with patch("src.metadata_lookup.lookup_ol_by_title",
+                   return_value=[self._text_result(isbn="9788520917185")]):
+            with patch.object(svc, "_lookup_by_isbn",
+                              return_value=[self._isbn_result()]) as mock_isbn:
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        mock_isbn.assert_called_once_with("9788520917185")
+        assert results[0].publisher == "Record"
+        assert results[0].year == "1990"
+        assert results[0].confidence == 0.9
+
+    def test_text_without_isbn_returns_text_result(self, tmp_path):
+        """Fase 1 sem ISBN em nenhum candidato → retorna resultado de texto diretamente."""
+        svc = self._make_service(tmp_path)
+        with patch("src.metadata_lookup.lookup_ol_by_title",
+                   return_value=[self._text_result(isbn=None)]):
+            with patch.object(svc, "_lookup_by_isbn") as mock_isbn:
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        mock_isbn.assert_not_called()
+        assert results[0].title == "O Estrangeiro"
+
+    def test_ol_fails_then_gb_tried(self, tmp_path):
+        """Quando Open Library retorna vazio, Google Books deve ser tentado."""
+        svc = self._make_service(tmp_path)
+        gb_result = self._text_result(isbn=None)
+        with patch("src.metadata_lookup.lookup_ol_by_title", return_value=[]):
+            with patch("src.metadata_lookup.lookup_gb_by_title",
+                       return_value=[gb_result]) as mock_gb:
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        mock_gb.assert_called_once()
+        assert len(results) == 1
+
+    def test_isbn_lookup_fails_falls_back_to_text(self, tmp_path):
+        """Fase 2 retorna [] → retorna resultado de texto como fallback."""
+        svc = self._make_service(tmp_path)
+        with patch("src.metadata_lookup.lookup_ol_by_title",
+                   return_value=[self._text_result(isbn="9788520917185")]):
+            with patch.object(svc, "_lookup_by_isbn", return_value=[]):
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        assert len(results) == 1
+        assert results[0].publisher is None
+
+    def test_cache_hit_in_phase2_skips_http(self, tmp_path):
+        """ISBN já no cache → fase 2 não faz requisição HTTP."""
+        svc = self._make_service(tmp_path)
+        isbn = "9788520917185"
+        svc._cache[isbn] = [{
+            "title": "O Estrangeiro", "authors": ["Albert Camus"],
+            "isbn13": isbn, "year": "1990", "publisher": "Record",
+            "categories": [], "cover_url": None, "confidence": 0.9,
+            "source": "openlibrary",
+        }]
+        with patch("src.metadata_lookup.lookup_ol_by_title",
+                   return_value=[self._text_result(isbn=isbn)]):
+            with patch.object(svc, "_lookup_by_isbn") as mock_isbn:
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        mock_isbn.assert_not_called()
+        assert results[0].source == LookupSource.CACHE
+
+    def test_both_apis_fail_returns_empty(self, tmp_path):
+        """OL e GB retornam vazio → resultado final é lista vazia."""
+        svc = self._make_service(tmp_path)
+        with patch("src.metadata_lookup.lookup_ol_by_title", return_value=[]):
+            with patch("src.metadata_lookup.lookup_gb_by_title", return_value=[]):
+                with patch.object(svc, "_rate_limit"):
+                    results = svc._lookup_by_title_then_isbn("XYZ", "")
+        assert results == []
+
+    def test_isbn_saved_to_cache_after_phase2(self, tmp_path):
+        """Resultado de fase 2 deve ser salvo no cache para evitar requisições futuras."""
+        svc = self._make_service(tmp_path)
+        isbn = "9788520917185"
+        with patch("src.metadata_lookup.lookup_ol_by_title",
+                   return_value=[self._text_result(isbn=isbn)]):
+            with patch.object(svc, "_lookup_by_isbn", return_value=[self._isbn_result()]):
+                with patch.object(svc, "_rate_limit"):
+                    svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        assert isbn in svc._cache
+
+    def test_skips_candidates_without_isbn_before_finding_one(self, tmp_path):
+        """Iteração dos candidatos: deve pular os sem ISBN e usar o primeiro com ISBN."""
+        svc = self._make_service(tmp_path)
+        isbn = "9788520917185"
+        candidates = [
+            self._text_result(isbn=None),
+            self._text_result(isbn=None),
+            self._text_result(isbn=isbn),
+        ]
+        with patch("src.metadata_lookup.lookup_ol_by_title", return_value=candidates):
+            with patch.object(svc, "_lookup_by_isbn",
+                              return_value=[self._isbn_result()]) as mock_isbn:
+                with patch.object(svc, "_rate_limit"):
+                    svc._lookup_by_title_then_isbn("O Estrangeiro", "Albert Camus")
+        mock_isbn.assert_called_once_with(isbn)
