@@ -40,11 +40,12 @@ jobs:
           open(path, "w").write(content)
 
       - name: Build executable with PyInstaller
+        shell: bash
         run: |
-          pyinstaller --onefile --windowed ^
-            --icon=resources/icons/simplerename.ico ^
-            --name=SimpleRename ^
-            --add-data="resources;resources" ^
+          pyinstaller --onefile --windowed \
+            --icon=resources/icons/simplerename.ico \
+            --name=SimpleRename \
+            --add-data="resources;resources" \
             main.py
 
       - name: Build NSIS Installer
