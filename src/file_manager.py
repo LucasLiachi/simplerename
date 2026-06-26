@@ -111,6 +111,29 @@ class FileTableModel(QAbstractTableModel):
         bottom_right = self.index(row, self.columnCount() - 1)
         self.dataChanged.emit(top_left, bottom_right)
 
+    def get_metadata(self, row: int):
+        """Retorna BookMetadata reconstituído dos dados da linha, ou None.
+
+        Args:
+            row: Índice da linha na tabela.
+
+        Returns:
+            BookMetadata com os dados da linha, ou None se o índice for inválido.
+        """
+        if row >= len(self.files):
+            return None
+        from .pdf_metadata_extractor import BookMetadata
+        file = self.files[row]
+        custom = self.custom_data.get(file['path'], {})
+        return BookMetadata(
+            title     = custom.get('Título') or None,
+            author    = custom.get('Autor') or None,
+            isbn      = custom.get('ISBN') or None,
+            year      = custom.get('Ano') or None,
+            publisher = custom.get('Editora') or None,
+            source    = "spreadsheet",
+        )
+
     def get_custom_column_indices(self) -> List[int]:
         """Retorna os índices das colunas customizadas"""
         format_idx = 1

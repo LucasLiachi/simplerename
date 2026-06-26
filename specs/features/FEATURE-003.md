@@ -1,7 +1,7 @@
 # Feature: Busca Online de Metadados (Google Books / Open Library)
 **ID:** FEATURE-003
 **Epic:** EPIC-001
-**Status:** Draft
+**Status:** In Progress
 **Priority:** P1 (critical)
 **Author:** PP-Planner
 **Created:** 2026-06-25
