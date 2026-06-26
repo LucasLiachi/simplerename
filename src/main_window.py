@@ -30,6 +30,7 @@ class MainWindow(QMainWindow):
     """Main application window for SimpleRename."""
 
     def __init__(self) -> None:
+        """Inicializa a janela principal e todos os seus widgets."""
         super().__init__()
         self.setWindowTitle("Simple Rename")
 
@@ -99,6 +100,11 @@ class MainWindow(QMainWindow):
         self.lookup_all_btn.setToolTip("Buscar metadados online para todas as linhas sem dados completos")
         self.lookup_all_btn.clicked.connect(self._lookup_all_incomplete)
 
+        # Search Incomplete button (FEATURE-007)
+        self.search_incomplete_btn = QPushButton("\U0001f50d Buscar Incompletos")
+        self.search_incomplete_btn.setToolTip("Buscar apenas linhas com qualidade incompleta (\U0001f7e1 ou \U0001f534)")
+        self.search_incomplete_btn.clicked.connect(self._search_incomplete)
+
         # Apply with Folders button (FEATURE-004)
         self.apply_folders_btn = QPushButton("Aplicar com Pastas")
         self.apply_folders_btn.setToolTip("Renomear e organizar por CDD com criacao de subpastas")
@@ -134,6 +140,7 @@ class MainWindow(QMainWindow):
         button_layout.addWidget(apply_button)
         button_layout.addWidget(self.lookup_btn)
         button_layout.addWidget(self.lookup_all_btn)
+        button_layout.addWidget(self.search_incomplete_btn)
         button_layout.addWidget(self.apply_folders_btn)
         button_layout.addWidget(self.undo_btn)
         button_layout.addWidget(self.redo_btn)
@@ -161,6 +168,9 @@ class MainWindow(QMainWindow):
         # Controller receives the shared HistoryManager
         self.current_directory = ""
         self.rename_controller = RenameController(self.history_manager)
+
+        # SearchPipeline — inicializado lazy (FEATURE-007)
+        self._search_pipeline: object = None
 
         # Connect HistoryManager signals to enable/disable Undo/Redo buttons
         if hasattr(self.history_manager, 'undoAvailable'):
@@ -207,13 +217,44 @@ class MainWindow(QMainWindow):
                 results = self.rename_controller.execute_rename(changes)
                 success_count = sum(1 for msg in results.values() if msg.startswith("Successfully"))
                 self._save_history()
-                self.statusBar().showMessage(f"Renamed {success_count} files")
+                # Write-back de metadados PDF para arquivos renomeados com sucesso
+                wb_count = self._apply_pdf_writeback(changes)
+                msg = f"Renamed {success_count} files"
+                if wb_count:
+                    msg += f" (metadados gravados em {wb_count} PDFs)"
+                self.statusBar().showMessage(msg)
                 self.spreadsheet_view.load_directory(self.current_directory)
             else:
                 self._start_rename_worker(changes)
 
         except Exception as e:
             self.statusBar().showMessage(f"Error: {str(e)}")
+
+    def _apply_pdf_writeback(self, changes: list) -> int:
+        """
+        Grava metadados confirmados nos PDFs renomeados.
+
+        Args:
+            changes: Lista de tuplas (original_path, new_name) usada no rename.
+
+        Returns:
+            Contagem de arquivos com write-back bem-sucedido.
+        """
+        from .pdf_metadata_writer import write_metadata_to_pdf
+        from .file_manager import DualBandTableModel
+        model = self.spreadsheet_view.model
+        if not isinstance(model, DualBandTableModel):
+            return 0
+        count = 0
+        for original_path, new_name in changes:
+            new_path = os.path.join(os.path.dirname(original_path), new_name)
+            for row in model.rows:
+                if row.original_path == original_path:
+                    if new_name.lower().endswith(".pdf"):
+                        if write_metadata_to_pdf(new_path, row):
+                            count += 1
+                    break
+        return count
 
     def _start_rename_worker(self, changes: list) -> None:
         """Start RenameWorker with a QProgressDialog for large batches."""
@@ -314,6 +355,23 @@ class MainWindow(QMainWindow):
             self._lookup_service = MetadataLookupService()
         return self._lookup_service
 
+    def _get_search_pipeline(self) -> object:
+        """
+        Instancia SearchPipeline (lazy, reutilizado entre chamadas).
+
+        Returns:
+            SearchPipeline configurado com ABNT e MetadataLookupService.
+        """
+        if self._search_pipeline is None:
+            from .search_pipeline import SearchPipeline
+            from .metadata_lookup import MetadataLookupService
+            from .cataloging_engine import CatalogingEngine, NamingConvention
+            self._search_pipeline = SearchPipeline(
+                MetadataLookupService(),
+                CatalogingEngine(convention=NamingConvention.ABNT),
+            )
+        return self._search_pipeline
+
     def _lookup_selected(self) -> None:
         """Dispara busca online para a linha selecionada na planilha."""
         indexes = self.spreadsheet_view.selectedIndexes()
@@ -336,7 +394,7 @@ class MainWindow(QMainWindow):
             if meta and meta.quality != MetadataQuality.COMPLETE:
                 rows.append((row, meta))
         if not rows:
-            self.statusBar().showMessage("Todas as linhas já têm metadados completos")
+            self.statusBar().showMessage("Todas as linhas ja tem metadados completos")
             return
         self._start_lookup_worker(rows)
 
@@ -350,17 +408,103 @@ class MainWindow(QMainWindow):
         self._lookup_worker = LookupWorker(rows, service)
         self._lookup_worker.result_ready.connect(self._on_lookup_result)
         self._lookup_worker.finished.connect(
-            lambda total: self.statusBar().showMessage(f"Busca concluída: {total} arquivos processados")
+            lambda total: self.statusBar().showMessage(f"Busca concluida: {total} arquivos processados")
         )
         self._lookup_worker.start()
         self.statusBar().showMessage(f"Buscando metadados para {len(rows)} arquivo(s)...")
 
     def _on_lookup_result(self, row: int, results: list) -> None:
-        """Aplica o melhor resultado de lookup à linha."""
+        """Aplica o melhor resultado de lookup a linha."""
         if not results:
             return
         best = results[0]
         self.spreadsheet_view.model.set_metadata(row, best.to_book_metadata())
+
+    def _search_incomplete(self) -> None:
+        """
+        Busca metadados apenas para linhas com MetadataQuality != COMPLETE.
+
+        Utiliza SearchPipeline (FEATURE-007) em vez do LookupWorker legado,
+        populando diretamente a faixa verde da DualBandTableModel.
+        """
+        from .pdf_metadata_extractor import MetadataQuality
+        from .file_manager import DualBandTableModel
+        if not isinstance(self.spreadsheet_view.model, DualBandTableModel):
+            return
+        rows = [
+            (i, row) for i, row in enumerate(self.spreadsheet_view.model.rows)
+            if row.metadata_quality != MetadataQuality.COMPLETE
+        ]
+        if not rows:
+            self.statusBar().showMessage("Todas as linhas ja tem metadados completos")
+            return
+        self._start_search_worker(rows)
+
+    def _start_search_worker(self, rows: list) -> None:
+        """
+        Inicia SearchWorker (FEATURE-007) em background.
+
+        Args:
+            rows: Lista de tuplas (row_index, FileRow) a processar.
+        """
+        from .search_pipeline import SearchWorker
+
+        pipeline = self._get_search_pipeline()
+        if hasattr(self, '_search_worker') and self._search_worker.isRunning():
+            self._search_worker.cancel()
+            self._search_worker.wait()
+
+        self._search_progress = QProgressDialog(
+            "Buscando metadados...", "Cancelar", 0, len(rows), self
+        )
+        self._search_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._search_progress.setMinimumDuration(0)
+        self._search_progress.canceled.connect(
+            lambda: self._search_worker.cancel() if hasattr(self, '_search_worker') else None
+        )
+
+        self._search_worker = SearchWorker(rows, pipeline)
+        self._search_worker.row_done.connect(self._on_search_row_done)
+        self._search_worker.row_error.connect(self._on_search_row_error)
+        self._search_worker.progress.connect(
+            lambda done, total: self._search_progress.setValue(done)
+        )
+        self._search_worker.finished.connect(self._on_search_finished)
+        self._search_worker.start()
+        self.statusBar().showMessage(f"Buscando metadados para {len(rows)} arquivo(s)...")
+
+    def _on_search_row_done(self, row_idx: int, updated_row: object) -> None:
+        """
+        Atualiza a linha na model com os dados retornados pelo SearchWorker.
+
+        Args:
+            row_idx: Índice da linha atualizada.
+            updated_row: FileRow com faixa verde preenchida.
+        """
+        from .file_manager import DualBandTableModel
+        model = self.spreadsheet_view.model
+        if isinstance(model, DualBandTableModel):
+            model.rows[row_idx] = updated_row
+            model.dataChanged.emit(
+                model.index(row_idx, 0),
+                model.index(row_idx, model.columnCount() - 1)
+            )
+
+    def _on_search_row_error(self, row_idx: int, message: str) -> None:
+        """
+        Trata erro silencioso por linha — o status global é exibido ao final.
+
+        Args:
+            row_idx: Índice da linha que falhou.
+            message: Mensagem de erro.
+        """
+        pass  # Falha silenciosa por linha — barra de status global ao final
+
+    def _on_search_finished(self) -> None:
+        """Fecha o dialog de progresso e exibe mensagem de conclusão."""
+        if hasattr(self, '_search_progress'):
+            self._search_progress.close()
+        self.statusBar().showMessage("Busca concluida")
 
     def _apply_with_folders(self) -> None:
         """Gera sugestoes CDD e aplica com confirmacao do usuario."""
@@ -392,7 +536,12 @@ class MainWindow(QMainWindow):
             self.spreadsheet_view.load_directory(self.current_directory)
 
     def _get_cataloging_items(self) -> list:
-        """Coleta (BookMetadata, original_path, categories) de cada linha da planilha."""
+        """
+        Coleta (BookMetadata, original_path, categories) de cada linha da planilha.
+
+        Returns:
+            Lista de tuplas prontas para CatalogingEngine.suggest_batch.
+        """
         items = []
         model = self.spreadsheet_view.model
         for row in range(model.rowCount()):
@@ -400,7 +549,11 @@ class MainWindow(QMainWindow):
             if meta is None:
                 continue
             # DualBandTableModel armazena o caminho em rows[row].original_path
-            original_path = model.rows[row].original_path
+            if hasattr(model, 'rows'):
+                original_path = model.rows[row].original_path
+            else:
+                file_info = model.files[row]
+                original_path = file_info.get('path', '')
             categories: list = []
             items.append((meta, original_path, categories))
         return items
@@ -423,4 +576,3 @@ class MainWindow(QMainWindow):
         """Confirma todas as sugestoes de todas as linhas."""
         self.spreadsheet_view.model.confirm_all()
         self.statusBar().showMessage("Todas as sugestoes confirmadas")
-
