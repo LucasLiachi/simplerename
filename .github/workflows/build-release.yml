@@ -48,11 +48,12 @@ jobs:
             --add-data="resources;resources" \
             main.py
 
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
       - name: Build NSIS Installer
-        uses: joncloud/makensis-action@v4
-        with:
-          script-file: installer.nsi
-          arguments: /DVERSION=${{ steps.version.outputs.VERSION }}
+        run: |
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} installer.nsi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
