@@ -135,22 +135,35 @@ simplerename/
 
 ---
 
-## Histórico de Implementação (v1.0.0 → v1.0.4)
+## Histórico de Implementação (v1.0.0 → v1.2.0)
 
 ```
-[FEATURE-001] ✅ Build Pipeline         → src/version.py, GitHub Actions, NSIS
-[FEATURE-002] ✅ Extração PDF           → src/pdf_metadata_extractor.py
-[FEATURE-003] ✅ Busca Online           → src/metadata_lookup.py
-[FEATURE-004] ✅ Catalogação CDD        → src/cataloging_engine.py
-[FEATURE-005] ✅ Planilha + Undo        → HistoryManager, Preview, Ctrl+Z/Y
+[FEATURE-001] ✅ Build Pipeline              → src/version.py, GitHub Actions, NSIS
+[FEATURE-002] ✅ Extração PDF                → src/pdf_metadata_extractor.py
+[FEATURE-003] ✅ Busca Online                → src/metadata_lookup.py
+[FEATURE-004] ✅ Catalogação CDD             → src/cataloging_engine.py
+[FEATURE-005] ✅ Planilha + Undo             → HistoryManager, Preview, Ctrl+Z/Y
+[FEATURE-006] ✅ Layout Dual-Faixa           → DualBandTableModel, GroupedHeaderView
+[FEATURE-007] ✅ Busca ISBN Completa         → SearchPipeline, SearchWorker, pdf_metadata_writer
+[FEATURE-008] ✅ Regressões + Polimento      → parser FILENAME_PATTERNS, update_row, dark mode, toolbar
+[FEATURE-009] ✅ Busca em Duas Fases         → _lookup_by_title_then_isbn, _strategy_title_only, 72 testes
+[FEATURE-010] ✅ Coluna Novo ISBN            → COL_NEW_ISBN, validação 978/979, write-back PDF
+[FEATURE-011] ✅ Coluna Classificação        → COL_NEW_CLASSIF, category_to_cdd (keyword mais longa)
 ```
 
-## Próximas Implementações (v1.1.0 — Semanas 10-14)
+**Suite de testes v1.2.0:** 210 testes passam (9 módulos válidos).
+4 arquivos legados ignorados: `test_file_operations`, `test_gui_components`, `test_main`, `test_renaming_engine`
+(importam módulos removidos em versões anteriores).
+
+## Backlog v1.3.x (Q4 2026)
 
 ```
-[FEATURE-006] Layout Dual-Faixa     → Semanas 10-11
-[FEATURE-007] Busca ISBN Completa   → Semanas 12-13
-              Integração + testes   → Semana 14 → tag v1.1.0
+[ ] Write-back de metadados em EPUB (ebooklib)         P2
+[ ] Backup automático .pdf.bak antes de write-back     P2
+[ ] Filtro de extensão na toolbar (FilterSortManager)  P3
+[ ] Painel de histórico com timestamp                  P3
+[ ] Code signing do instalador Windows                 P3
+[ ] Auto-update ao abrir o app                        P3
 ```
 
 ---
