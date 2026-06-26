@@ -1,7 +1,7 @@
 # Feature: Estratégia de Biblioteconomia e Catalogação
 **ID:** FEATURE-004
 **Epic:** EPIC-001
-**Status:** Draft
+**Status:** In Progress
 **Priority:** P1 (critical)
 **Author:** PP-Planner
 **Created:** 2026-06-25
