@@ -22,14 +22,16 @@ class FileTableModel(QAbstractTableModel):
     def __init__(self):
         super().__init__()
         self.files = []
-        self.headers = ['Name', 'Format', '+', 'New Name']  # Added '+' column
+        self.headers = ['Name', 'Format', '+', 'New Name', 'Preview']
         self.custom_columns = []
         self.custom_data = {}  # Armazena dados das colunas customizadas
 
-    def add_custom_column(self, title: str):
-        """Adiciona uma nova coluna customizada"""
+    def add_custom_column(self, title: str) -> None:
+        """Adiciona uma nova coluna customizada antes de 'New Name' e 'Preview'."""
+        if title in self.custom_columns:
+            return
         self.custom_columns.append(title)
-        self.headers = ['Name', 'Format', '+'] + self.custom_columns + ['New Name']
+        self.headers = ['Name', 'Format', '+'] + self.custom_columns + ['New Name', 'Preview']
         # Inicializa dados vazios para a nova coluna
         for file in self.files:
             if file['path'] not in self.custom_data:
@@ -37,10 +39,21 @@ class FileTableModel(QAbstractTableModel):
             self.custom_data[file['path']][title] = ''
         self.layoutChanged.emit()
 
-    def load_files(self, files: List[Dict[str, Any]]):
-        """Load files into the model"""
+    def _preview_col_index(self) -> int:
+        """Retorna o índice da coluna Preview (sempre a última)."""
+        return len(self.headers) - 1
+
+    def _new_name_col_index(self) -> int:
+        """Retorna o índice da coluna New Name (sempre a penúltima)."""
+        return len(self.headers) - 2
+
+    def load_files(self, files: List[Dict[str, Any]]) -> None:
+        """Load files into the model."""
         self.beginResetModel()
         self.files = files
+        # Ensure Preview is always the last column
+        if 'Preview' not in self.headers:
+            self.headers = ['Name', 'Format', '+'] + self.custom_columns + ['New Name', 'Preview']
         self.endResetModel()
     
     def rowCount(self, parent=None):
@@ -54,17 +67,33 @@ class FileTableModel(QAbstractTableModel):
             return None
 
         col = index.column()
-        file = self.files[index.row()]
+        row = index.row()
+        file = self.files[row]
+
+        # Preview column (always last) — read-only, calculated in real time
+        if col == self._preview_col_index():
+            preview = file.get('new_name', '') + file.get('extension', '')
+            if role == Qt.ItemDataRole.DisplayRole:
+                return preview
+            if role == Qt.ItemDataRole.BackgroundRole:
+                from PyQt6.QtGui import QColor
+                original = file.get('name', '')
+                if preview != original:
+                    return QColor(200, 220, 255)  # azul claro
+            if role == Qt.ItemDataRole.ForegroundRole:
+                from PyQt6.QtGui import QColor
+                return QColor(0, 80, 160)
+            return None
 
         # Colunas customizadas
         custom_col_start = 3
         custom_col_end = custom_col_start + len(self.custom_columns)
-        
+
         if custom_col_start <= col < custom_col_end:
             if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
                 column_title = self.headers[col]
                 return self.custom_data.get(file['path'], {}).get(column_title, '')
-            
+
         if role == Qt.ItemDataRole.DisplayRole:
             if col == 0:
                 return file['name']
@@ -72,16 +101,14 @@ class FileTableModel(QAbstractTableModel):
                 return file['format']
             elif col == 2:
                 return ''  # '+' column is empty
-            elif col == custom_col_end:
+            elif col == self._new_name_col_index():
                 return file['new_name']
-            # ...existing code...
 
         if role == Qt.ItemDataRole.EditRole:
             if col == 0:
                 return file['name']
-            elif col == custom_col_end:
+            elif col == self._new_name_col_index():
                 return file['new_name']
-            # ...existing code...
 
         return None
     
@@ -135,10 +162,9 @@ class FileTableModel(QAbstractTableModel):
         )
 
     def get_custom_column_indices(self) -> List[int]:
-        """Retorna os índices das colunas customizadas"""
-        format_idx = 1
-        new_name_idx = len(self.headers) - 1
-        return list(range(3, new_name_idx))  # Exclui colunas padrão e coluna '+'
+        """Retorna os índices das colunas customizadas (entre '+' e 'New Name')."""
+        # Custom columns occupy indices 3 .. _new_name_col_index()-1
+        return list(range(3, self._new_name_col_index()))
 
     def get_custom_column_data(self, row: int) -> Dict[str, str]:
         """Retorna os dados das colunas customizadas para uma linha específica"""
@@ -157,7 +183,11 @@ class FileTableModel(QAbstractTableModel):
 
         row = index.row()
         col = index.column()
-        
+
+        # Preview column is read-only — reject writes
+        if col == self._preview_col_index():
+            return False
+
         # Para colunas customizadas
         if col in self.get_custom_column_indices():
             if role == Qt.ItemDataRole.EditRole:
@@ -166,15 +196,21 @@ class FileTableModel(QAbstractTableModel):
                 if file_path not in self.custom_data:
                     self.custom_data[file_path] = {}
                 self.custom_data[file_path][header] = value
+                # Also refresh Preview column
                 self.dataChanged.emit(index, index)
+                preview_idx = self.index(row, self._preview_col_index())
+                self.dataChanged.emit(preview_idx, preview_idx)
                 return True
-                
-        # Para a coluna New Name
-        elif col == len(self.headers) - 1 and role == Qt.ItemDataRole.EditRole:
+
+        # Para a coluna New Name (penúltima)
+        elif col == self._new_name_col_index() and role == Qt.ItemDataRole.EditRole:
             self.files[row]['new_name'] = value
             self.dataChanged.emit(index, index)
+            # Notify Preview column to repaint
+            preview_idx = self.index(row, self._preview_col_index())
+            self.dataChanged.emit(preview_idx, preview_idx)
             return True
-            
+
         return False
     
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
@@ -182,20 +218,27 @@ class FileTableModel(QAbstractTableModel):
             return self.headers[section]
         return None
 
-    def flags(self, index):
+    def flags(self, index) -> Qt.ItemFlag:
+        """Return item flags. Preview column is read-only; custom columns and New Name are editable."""
         flags = super().flags(index)
-        
+
+        col = index.column()
+
+        # Preview column is read-only
+        if col == self._preview_col_index():
+            return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+
         # Torna as colunas customizadas editáveis
         custom_col_start = 3
         custom_col_end = custom_col_start + len(self.custom_columns)
-        
-        if custom_col_start <= index.column() < custom_col_end:
+
+        if custom_col_start <= col < custom_col_end:
             return flags | Qt.ItemFlag.ItemIsEditable
-            
-        # Mantém a última coluna (New Name) editável
-        if index.column() == len(self.headers) - 1:
+
+        # Mantém a coluna New Name (penúltima) editável
+        if col == self._new_name_col_index():
             return flags | Qt.ItemFlag.ItemIsEditable
-            
+
         return flags
 
 class FileOperationError(Exception):
