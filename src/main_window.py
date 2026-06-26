@@ -98,12 +98,18 @@ class MainWindow(QMainWindow):
         self.lookup_all_btn.setToolTip("Buscar metadados online para todas as linhas sem dados completos")
         self.lookup_all_btn.clicked.connect(self._lookup_all_incomplete)
 
+        # Apply with Folders button (FEATURE-004)
+        self.apply_folders_btn = QPushButton("Aplicar com Pastas")
+        self.apply_folders_btn.setToolTip("Renomear e organizar por CDD com criacao de subpastas")
+        self.apply_folders_btn.clicked.connect(self._apply_with_folders)
+
         # Add buttons to layout
         button_layout.addWidget(prepare_button)
         button_layout.addWidget(replace_spaces_button)
         button_layout.addWidget(apply_button)
         button_layout.addWidget(self.lookup_btn)
         button_layout.addWidget(self.lookup_all_btn)
+        button_layout.addWidget(self.apply_folders_btn)
         button_layout.addStretch()  # Alinha os botões à esquerda
 
         # Layout assembly (modificado)
@@ -283,6 +289,48 @@ class MainWindow(QMainWindow):
             return
         best = results[0]
         self.spreadsheet_view.model.set_metadata(row, best.to_book_metadata())
+
+    def _apply_with_folders(self) -> None:
+        """Gera sugestoes CDD e aplica com confirmacao do usuario."""
+        from .cataloging_engine import CatalogingEngine, NamingConvention
+        from PyQt6.QtWidgets import QMessageBox
+
+        if not self.current_directory:
+            self.statusBar().showMessage("Nenhum diretorio selecionado")
+            return
+
+        engine = CatalogingEngine(convention=NamingConvention.ABNT)
+        items  = self._get_cataloging_items()
+        if not items:
+            self.statusBar().showMessage("Nenhum arquivo com metadados para catalogar")
+            return
+
+        suggestions = engine.suggest_batch(items)
+        preview     = engine.preview_tree(suggestions, self.current_directory)
+
+        reply = QMessageBox.question(
+            self, "Confirmar organizacao",
+            f"A seguinte estrutura sera criada:\n\n{preview}\n\nDeseja continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            results = engine.apply(suggestions, self.current_directory, dry_run=False)
+            success = sum(1 for r in results if r.success)
+            self.statusBar().showMessage(f"Organizado: {success}/{len(results)} arquivos")
+            self.spreadsheet_view.load_directory(self.current_directory)
+
+    def _get_cataloging_items(self) -> list:
+        """Coleta (BookMetadata, original_path, categories) de cada linha da planilha."""
+        items = []
+        for row in range(self.spreadsheet_view.model.rowCount()):
+            meta = self.spreadsheet_view.model.get_metadata(row)
+            if meta is None:
+                continue
+            file_info = self.spreadsheet_view.model.files[row]
+            original_path = file_info.get('path', '')
+            categories: list = []
+            items.append((meta, original_path, categories))
+        return items
 
 import os
 import shutil
