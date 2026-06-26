@@ -260,6 +260,10 @@ class MetadataLookupService:
         """
         Busca online usando ISBN como chave primária, título+autor como fallback.
 
+        Fluxo quando há ISBN: cache → Open Library (ISBN) → Google Books (ISBN).
+        Fluxo quando há apenas título: texto → extrai ISBN do resultado → lookup preciso
+        pelo ISBN → fallback para o resultado de texto se nenhum ISBN for encontrado.
+
         Args:
             meta: BookMetadata retornado pelo pdf_metadata_extractor.
 
@@ -274,18 +278,24 @@ class MetadataLookupService:
                         for r in cached]
             results = self._lookup_by_isbn(meta.isbn)
             if results:
-                self._cache[meta.isbn] = [
-                    {k: v.value if isinstance(v, LookupSource) else v
-                     for k, v in r.__dict__.items()}
-                    for r in results
-                ]
-                self._save_cache()
+                self._cache_and_save(meta.isbn, results)
                 return results
 
         if meta.title:
-            return self._lookup_by_title(meta.title, meta.author or "")
+            return self._lookup_by_title_then_isbn(
+                meta.title, meta.author or ""
+            )
 
         return []
+
+    def _cache_and_save(self, isbn: str, results: list[LookupResult]) -> None:
+        """Persiste lista de resultados no cache indexado por ISBN."""
+        self._cache[isbn] = [
+            {k: v.value if isinstance(v, LookupSource) else v
+             for k, v in r.__dict__.items()}
+            for r in results
+        ]
+        self._save_cache()
 
     def _lookup_by_isbn(self, isbn: str) -> list[LookupResult]:
         """Busca por ISBN: Open Library primeiro, Google Books como fallback."""
@@ -296,11 +306,59 @@ class MetadataLookupService:
             results = lookup_gb_by_isbn(isbn, self._api_key)
         return sorted(results, key=lambda r: r.confidence, reverse=True)
 
-    def _lookup_by_title(self, title: str, author: str) -> list[LookupResult]:
-        """Busca por título/autor: Open Library primeiro, Google Books como fallback."""
+    def _lookup_by_title_then_isbn(
+        self, title: str, author: str
+    ) -> list[LookupResult]:
+        """
+        Busca em duas fases para obter metadados completos a partir de texto.
+
+        Fase 1 — busca por texto (título + autor):
+            Open Library search.json → Google Books volumes (fallback).
+            O resultado de texto costuma ter título, autor e ISBN, mas dados
+            de editora e data incompletos.
+
+        Fase 2 — lookup preciso pelo ISBN extraído da fase 1:
+            Se qualquer resultado trouxer um ISBN, faz novo request ao endpoint
+            de ISBN (Open Library books API ou Google Books), que retorna o
+            registro completo da edição (editora, data exata, categorias, capa).
+            O resultado de ISBN é cacheado para evitar requisições repetidas.
+
+        Fallback — sem ISBN disponível:
+            Retorna o melhor resultado da fase 1 diretamente.
+
+        Args:
+            title: Título do livro (pode estar em qualquer idioma).
+            author: Autor do livro (pode ser vazio).
+
+        Returns:
+            Lista de LookupResult ordenada por confidence (maior primeiro).
+        """
+        # Fase 1: busca por texto
         self._rate_limit()
-        results = lookup_ol_by_title(title, author)
-        if not results:
+        text_results = lookup_ol_by_title(title, author)
+        if not text_results:
             self._rate_limit()
-            results = lookup_gb_by_title(title, author, self._api_key)
-        return sorted(results, key=lambda r: r.confidence, reverse=True)
+            text_results = lookup_gb_by_title(title, author, self._api_key)
+
+        if not text_results:
+            return []
+
+        # Fase 2: tenta enriquecer via ISBN dos 3 primeiros candidatos
+        for candidate in text_results[:3]:
+            if not candidate.isbn13:
+                continue
+            isbn = candidate.isbn13
+
+            # Verifica cache antes de fazer nova requisição
+            if isbn in self._cache:
+                return [LookupResult(**{**r, "source": LookupSource.CACHE})
+                        for r in self._cache[isbn]]
+
+            self._rate_limit()
+            isbn_results = self._lookup_by_isbn(isbn)
+            if isbn_results:
+                self._cache_and_save(isbn, isbn_results)
+                return isbn_results
+
+        # Fallback: sem ISBN disponível — retorna resultado de texto
+        return sorted(text_results, key=lambda r: r.confidence, reverse=True)
