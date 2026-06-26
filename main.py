@@ -3,6 +3,7 @@ import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from src.main_window import MainWindow
+from src.version import __version__, APP_NAME
 
 def resource_path(relative_path):
     """Get absolute path to resource, works for dev and for PyInstaller"""
@@ -22,6 +23,7 @@ def main():
         app.setWindowIcon(QIcon(icon_path))
     
     window = MainWindow()
+    window.setWindowTitle(f"{APP_NAME} v{__version__}")
     window.show()
     sys.exit(app.exec())
 
