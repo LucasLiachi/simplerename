@@ -143,43 +143,170 @@ simplerename/
 
 ---
 
-## Fluxo de Desenvolvimento com Agentes
+## Fluxo Git Completo — Worktrees, Branches e Merges
 
-### Como desenvolver uma feature
+### Ciclo de vida de uma feature
 
 ```
-1. Ler spec em specs/features/FEATURE-XXX.md
-2. Ler agent em agents/<nome>.md para entender o contrato
-3. Despachar Agent(isolation="worktree") com prompt completo
-4. Verificar se o agente commitou (git status no worktree)
-   → Se não commitou: commitar manualmente antes de mergear
-5. Fazer merge no main:
-   git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX ..."
-6. Resolver conflitos de main_window.py:
-   → Manter TODOS os botões e métodos de AMBAS as branches
-   → Descartar apenas código triplicado/duplicado
-7. Atualizar specs/features/FEATURE-XXX.md: Status → In Progress ou Done
-8. Para releases: git tag vX.Y.Z && git push origin vX.Y.Z
+main ──────────────────────────────────────────────────► main
+  │                                                         ▲
+  │  [Agent(isolation="worktree")]                          │
+  └──► worktree-agent-<id>  ──► commit ──► merge --no-ff ──┘
+          branch isolada         feat: FEATURE-XXX...     resolve conflitos
 ```
 
-### Conflitos recorrentes em `main_window.py`
+### 1. Criação automática da worktree
 
-Cada agente adiciona botões à toolbar em paralelo. Ao mergear:
-- **Manter** todos os `QPushButton(...)` de ambas as branches
-- **Manter** todos os `button_layout.addWidget(...)` de ambas
-- **Descartar** apenas duplicatas de funções de negócio (ex: `FileOperationError` definida dentro de `main_window.py`)
-
-### Antes de commitar um módulo novo
+Ao despachar `Agent(isolation="worktree")`, o harness cria automaticamente:
+- **Branch:** `worktree-agent-<uuid>` (ex: `worktree-agent-a4fd03fd1561e5f39`)
+- **Diretório:** `.claude/worktrees/agent-<uuid>/` (cópia isolada do repo)
+- O agente opera nessa cópia sem afetar `main`
 
 ```bash
-# Verificar duplicatas (DEBT-001 pattern)
-grep -c "class FileOperationError" src/main_window.py  # deve ser 0
+# Listar branches de worktree após execução
+git branch -a | grep worktree
+# worktree-agent-a4fd03fd1561e5f39
+# worktree-agent-a812c99146158832c
+```
 
-# Verificar fill handle duplicado (DEBT-002 pattern)
-grep -c "self.dragging" src/spreadsheet_view.py  # deve ser 0
+### 2. Verificar se o agente commitou
 
-# Verificar que Qt.ItemFlag está correto
-grep "ItemFlags" src/file_manager.py  # deve retornar vazio
+**Problema recorrente:** alguns agentes fazem as mudanças mas não commitam.
+Sempre verificar antes de mergear:
+
+```bash
+cd .claude/worktrees/agent-<id>
+
+# Ver estado
+git status --short
+# Se houver M (modified) ou ?? (untracked) → agente não commitou
+
+# Ver commits feitos
+git log --oneline -5
+# Se o HEAD ainda for o mesmo de main → agente não commitou
+
+# Commitar manualmente se necessário
+git add src/ tests/ specs/
+git commit -m "feat: FEATURE-XXX descrição
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+### 3. Inspecionar o diff antes de mergear
+
+```bash
+# Ver commits únicos da branch antes de mergear
+git log worktree-agent-<id> --oneline -10
+
+# Ver quais arquivos foram alterados
+git show worktree-agent-<id> --stat
+
+# Comparar com main
+git diff main...worktree-agent-<id> --name-only
+```
+
+### 4. Merge aprovado para main
+
+```bash
+# Sempre --no-ff para preservar o histórico do agente como um merge commit
+git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX descrição"
+
+# Se houver conflitos:
+git status  # ver quais arquivos conflitaram
+# Resolver → git add <arquivo> → git merge --continue
+```
+
+### 5. Resolução de conflitos em `main_window.py`
+
+Este arquivo conflita em todo merge porque cada agente adiciona botões à toolbar.
+**Protocolo de resolução:**
+
+```
+<<<<<<< HEAD (main)
+        self.btn_feature_A = QPushButton("Feature A")
+=======
+        self.btn_feature_B = QPushButton("Feature B")
+>>>>>>> worktree-agent-<id>
+```
+
+**Resolução correta:** manter AMBOS — nunca escolher um lado só:
+```python
+        self.btn_feature_A = QPushButton("Feature A")  # do HEAD
+        self.btn_feature_B = QPushButton("Feature B")  # do agente
+```
+
+**O que descartar:** funções de negócio duplicadas dentro do arquivo
+(ex: `class FileOperationError` que não deveria estar em `main_window.py`)
+
+### 6. Arquivos untracked bloqueando merge
+
+Se o merge falhar com `untracked working tree files would be overwritten`:
+
+```bash
+# Há arquivos não rastreados em main que a branch quer criar
+git status  # identificar os arquivos
+
+# Adicionar e commitar os arquivos untracked em main ANTES do merge
+git add specs/ agents/ CLAUDE.md
+git commit -m "chore: track project docs before merge"
+
+# Agora o merge funciona
+git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX"
+```
+
+### 7. Fluxo completo após merge: push e release
+
+```bash
+# 1. Verificar que todos os testes passam
+python -m pytest tests/ -q
+
+# 2. Push do código para origin
+git push origin main
+
+# 3. Criar tag de release (dispara CI automaticamente)
+#    Patch (bugfix/CI fix):
+git tag v1.0.1 && git push origin v1.0.1
+
+#    Minor (nova feature):
+git tag v1.1.0 && git push origin v1.1.0
+
+#    Major (breaking change):
+git tag v2.0.0 && git push origin v2.0.0
+
+# 4. Acompanhar o build em:
+#    https://github.com/LucasLiachi/simplerename/actions
+```
+
+### 8. Quando a tag disparou mas o build falhou
+
+```bash
+# NÃO deletar a tag — preservar histórico de falhas
+# Corrigir o problema, commitar, criar patch tag
+
+git add .github/workflows/build-release.yml
+git commit -m "fix: descrição do erro corrigido"
+git tag v1.0.2  # patch bump
+git push origin main
+git push origin v1.0.2
+```
+
+### Checklist de entrega antes do merge
+
+```bash
+# Duplicatas em main_window.py (DEBT-001 pattern)
+grep -c "class FileOperationError" src/main_window.py   # deve ser 0
+
+# Fill handle duplicado (DEBT-002 pattern)
+grep -c "self.dragging" src/spreadsheet_view.py         # deve ser 0
+
+# PyQt6 API correta
+grep "ItemFlags" src/file_manager.py                    # deve retornar vazio
+
+# Testes passando
+python -m pytest tests/ -q --tb=short
+
+# Sem arquivos da pasta .claude no stage
+git status | grep ".claude"                             # deve retornar vazio
 ```
 
 ---

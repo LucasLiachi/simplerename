@@ -416,3 +416,45 @@ class LookupWorker(QThread):
 - [ ] Cache gravado em `%APPDATA%\SimpleRename\cache\isbn_cache.json`
 - [ ] Todos os testes passando com mocks (zero chamadas reais de HTTP nos testes)
 - [ ] `requests` removido do `requirements.txt` (usamos `urllib` da stdlib)
+
+
+---
+
+## Protocolo de Entrega (Worktree → Main)
+
+Você opera em uma **worktree isolada** (`worktree-agent-<id>`), separada de `main`.
+Suas mudanças NÃO chegam ao main automaticamente — é obrigatório commitar antes de retornar.
+
+### Obrigações antes de encerrar
+
+1. **Commitar tudo** — nunca retornar com `git status` mostrando arquivos modificados ou untracked:
+```bash
+git add <arquivos modificados>
+git commit -m "feat: FEATURE-XXX descrição resumida
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+2. **Atualizar o spec** — mude `**Status:** Draft` ou `Planned` para `**Status:** In Progress` em `specs/features/FEATURE-XXX.md`
+
+3. **Confirmar no entregável** — liste explicitamente:
+   - Todos os arquivos criados ou modificados
+   - Resultado de cada item do checklist (✅ ou ❌ com motivo)
+   - Se commitou (sim/não) e o hash do commit
+
+### O que acontece depois
+
+```bash
+# Orquestrador faz merge no main após verificar:
+git log --oneline -3                     # confirmar commits do agente
+git diff main...worktree-agent-<id>      # revisar mudanças
+git merge worktree-agent-<id> --no-ff   # merge aprovado
+
+# Conflitos em main_window.py: manter TODOS os botões de ambas as branches
+# Depois: push + tag dispara CI/CD automaticamente
+```
+
+### Armadilha mais comum
+
+Se você não commitar, o merge retorna "Already up to date" e NENHUMA mudança entra no main.
+Sempre rode `git status` e `git log --oneline -1` antes de encerrar para confirmar.

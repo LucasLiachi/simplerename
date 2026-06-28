@@ -244,3 +244,54 @@ pyinstaller --onefile --windowed --icon=resources/icons/simplerename.ico --name=
 # Executável deve aparecer em dist/SimpleRename.exe
 # Executar e confirmar que o título exibe "Simple Rename v1.0.0"
 ```
+
+---
+
+## Protocolo de Entrega (Worktree → Main)
+
+Você opera em uma **worktree isolada** (`worktree-agent-<id>`), separada de `main`.
+Suas mudanças NÃO chegam ao main automaticamente — é obrigatório commitar antes de retornar.
+
+### Obrigações antes de encerrar
+
+1. **Commitar tudo** — nunca retornar com `git status` mostrando arquivos modificados ou untracked:
+```bash
+git add <arquivos modificados>
+git commit -m "feat: FEATURE-XXX descrição resumida
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+2. **Atualizar o spec** — mude `**Status:** Draft` ou `Planned` para `**Status:** In Progress` em `specs/features/FEATURE-XXX.md`
+
+3. **Confirmar no entregável** — liste explicitamente:
+   - Todos os arquivos criados ou modificados
+   - Resultado de cada item do checklist (✅ ou ❌ com motivo)
+   - Se commitou (sim/não) e o hash do commit
+
+### O que acontece depois
+
+Após retornar, o orquestrador executa:
+```bash
+# 1. Verificar commit
+cd .claude/worktrees/agent-<id> && git log --oneline -3
+
+# 2. Merge para main
+git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX ..."
+
+# 3. Resolver conflitos (main_window.py — manter AMBOS os blocos de botões)
+
+# 4. Push e tag de release
+git push origin main
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
+### Erros frequentes a evitar
+
+| Erro | Consequência | Como evitar |
+|---|---|---|
+| Não commitar | Merge traz zero mudanças ("Already up to date") | Sempre `git add` + `git commit` no final |
+| `OutFile` em subpasta | CI não encontra o instalador para publicar | `OutFile "SimpleRename-Setup-${VERSION}.exe"` (raiz) |
+| `File "dist-windows\..."` | PyInstaller gera em `dist/` | Usar `File "dist\SimpleRename.exe"` |
+| `^` em run: sem shell: bash | PowerShell não reconhece `^` como continuação | Adicionar `shell: bash` e trocar `^` por `\` |
+| actions sem versão pinada | Warning de Node deprecado | Usar `@v4.2.2`, `@v5.6.0`, `@v2.3.2` |
