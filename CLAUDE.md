@@ -74,7 +74,11 @@ simplerename/
 │   │   ├── FEATURE-004.md  ← Catalogação CDD
 │   │   ├── FEATURE-005.md  ← Planilha + Undo
 │   │   ├── FEATURE-006.md  ← Layout Dual-Faixa
-│   │   └── FEATURE-007.md  ← Busca ISBN Completa + Write-back PDF
+│   │   ├── FEATURE-007.md  ← Busca ISBN Completa + Write-back PDF
+│   │   ├── FEATURE-008.md  ← Regressões + Polimento (dark mode, toolbar, parser)
+│   │   ├── FEATURE-009.md  ← Busca em Duas Fases
+│   │   ├── FEATURE-010.md  ← Coluna Novo ISBN
+│   │   └── FEATURE-011.md  ← Coluna Classificação CDD
 │   ├── decisions/
 │   │   ├── ADR-001.md  ← Stack de build
 │   │   ├── ADR-002.md  ← Metadados PDF + Fill Handle
@@ -143,170 +147,43 @@ simplerename/
 
 ---
 
-## Fluxo Git Completo — Worktrees, Branches e Merges
+## Fluxo Git — Worktrees e Release
 
-### Ciclo de vida de uma feature
-
-```
-main ──────────────────────────────────────────────────► main
-  │                                                         ▲
-  │  [Agent(isolation="worktree")]                          │
-  └──► worktree-agent-<id>  ──► commit ──► merge --no-ff ──┘
-          branch isolada         feat: FEATURE-XXX...     resolve conflitos
-```
-
-### 1. Criação automática da worktree
-
-Ao despachar `Agent(isolation="worktree")`, o harness cria automaticamente:
-- **Branch:** `worktree-agent-<uuid>` (ex: `worktree-agent-a4fd03fd1561e5f39`)
-- **Diretório:** `.claude/worktrees/agent-<uuid>/` (cópia isolada do repo)
-- O agente opera nessa cópia sem afetar `main`
+### Ciclo de uma feature com agente
 
 ```bash
-# Listar branches de worktree após execução
-git branch -a | grep worktree
-# worktree-agent-a4fd03fd1561e5f39
-# worktree-agent-a812c99146158832c
-```
+# Agente cria branch worktree-agent-<uuid> automaticamente com isolation="worktree"
 
-### 2. Verificar se o agente commitou
-
-**Problema recorrente:** alguns agentes fazem as mudanças mas não commitam.
-Sempre verificar antes de mergear:
-
-```bash
+# Após execução: verificar se commitou, inspecionar, mergear
 cd .claude/worktrees/agent-<id>
+git status --short          # M ou ?? → agente não commitou; commitar manualmente
+git log --oneline -5        # confirmar commits
+git diff main...HEAD --name-only  # quais arquivos mudaram
 
-# Ver estado
-git status --short
-# Se houver M (modified) ou ?? (untracked) → agente não commitou
-
-# Ver commits feitos
-git log --oneline -5
-# Se o HEAD ainda for o mesmo de main → agente não commitou
-
-# Commitar manualmente se necessário
-git add src/ tests/ specs/
-git commit -m "feat: FEATURE-XXX descrição
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-```
-
-### 3. Inspecionar o diff antes de mergear
-
-```bash
-# Ver commits únicos da branch antes de mergear
-git log worktree-agent-<id> --oneline -10
-
-# Ver quais arquivos foram alterados
-git show worktree-agent-<id> --stat
-
-# Comparar com main
-git diff main...worktree-agent-<id> --name-only
-```
-
-### 4. Merge aprovado para main
-
-```bash
-# Sempre --no-ff para preservar o histórico do agente como um merge commit
+# Merge em main (sempre --no-ff)
 git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX descrição"
-
-# Se houver conflitos:
-git status  # ver quais arquivos conflitaram
-# Resolver → git add <arquivo> → git merge --continue
 ```
 
-### 5. Resolução de conflitos em `main_window.py`
+**Conflitos em `main_window.py`:** manter adições de AMBOS os lados — nunca descartar botões/métodos de nenhuma branch. Descartar apenas código de negócio que não deveria estar em `main_window.py`.
 
-Este arquivo conflita em todo merge porque cada agente adiciona botões à toolbar.
-**Protocolo de resolução:**
+**Merge bloqueado por untracked files:** commitar os arquivos soltos em `main` antes de mergear.
 
-```
-<<<<<<< HEAD (main)
-        self.btn_feature_A = QPushButton("Feature A")
-=======
-        self.btn_feature_B = QPushButton("Feature B")
->>>>>>> worktree-agent-<id>
-```
-
-**Resolução correta:** manter AMBOS — nunca escolher um lado só:
-```python
-        self.btn_feature_A = QPushButton("Feature A")  # do HEAD
-        self.btn_feature_B = QPushButton("Feature B")  # do agente
-```
-
-**O que descartar:** funções de negócio duplicadas dentro do arquivo
-(ex: `class FileOperationError` que não deveria estar em `main_window.py`)
-
-### 6. Arquivos untracked bloqueando merge
-
-Se o merge falhar com `untracked working tree files would be overwritten`:
+### Release
 
 ```bash
-# Há arquivos não rastreados em main que a branch quer criar
-git status  # identificar os arquivos
-
-# Adicionar e commitar os arquivos untracked em main ANTES do merge
-git add specs/ agents/ CLAUDE.md
-git commit -m "chore: track project docs before merge"
-
-# Agora o merge funciona
-git merge worktree-agent-<id> --no-ff -m "feat: merge FEATURE-XXX"
-```
-
-### 7. Fluxo completo após merge: push e release
-
-```bash
-# 1. Verificar que todos os testes passam
-python -m pytest tests/ -q
-
-# 2. Push do código para origin
+python -m pytest tests/ -q          # todos devem passar
 git push origin main
-
-# 3. Criar tag de release (dispara CI automaticamente)
-#    Patch (bugfix/CI fix):
-git tag v1.0.1 && git push origin v1.0.1
-
-#    Minor (nova feature):
-git tag v1.1.0 && git push origin v1.1.0
-
-#    Major (breaking change):
-git tag v2.0.0 && git push origin v2.0.0
-
-# 4. Acompanhar o build em:
-#    https://github.com/LucasLiachi/simplerename/actions
+git tag vX.Y.Z && git push origin vX.Y.Z   # dispara CI automaticamente
 ```
 
-### 8. Quando a tag disparou mas o build falhou
-
-```bash
-# NÃO deletar a tag — preservar histórico de falhas
-# Corrigir o problema, commitar, criar patch tag
-
-git add .github/workflows/build-release.yml
-git commit -m "fix: descrição do erro corrigido"
-git tag v1.0.2  # patch bump
-git push origin main
-git push origin v1.0.2
-```
+**Build falhou:** NÃO deletar a tag. Corrigir, commitar e criar patch tag (v1.0.1 → v1.0.2).
 
 ### Checklist de entrega antes do merge
 
 ```bash
-# Duplicatas em main_window.py (DEBT-001 pattern)
-grep -c "class FileOperationError" src/main_window.py   # deve ser 0
-
-# Fill handle duplicado (DEBT-002 pattern)
-grep -c "self.dragging" src/spreadsheet_view.py         # deve ser 0
-
-# PyQt6 API correta
-grep "ItemFlags" src/file_manager.py                    # deve retornar vazio
-
-# Testes passando
-python -m pytest tests/ -q --tb=short
-
-# Sem arquivos da pasta .claude no stage
-git status | grep ".claude"                             # deve retornar vazio
+grep "ItemFlags" src/file_manager.py          # deve retornar vazio (PyQt6 usa ItemFlag)
+python -m pytest tests/ -q --tb=short         # todos passando
+git status | grep ".claude"                   # deve retornar vazio
 ```
 
 ---
@@ -352,19 +229,11 @@ git push origin v1.2.0
 
 ---
 
-## Débitos Técnicos
+## Débitos Técnicos Ativos
 
-| ID | Arquivo | Problema | Status |
-|---|---|---|---|
-| DEBT-001 | `src/main_window.py` | Código triplicado: `FileOperationError`, `rename_files` etc. dentro de `main_window.py` | ✅ Resolvido em FEATURE-005 (1020→390 linhas) |
-| DEBT-002 | `src/spreadsheet_view.py` | Fill handle duplo: herança + reimplementação manual conflitam | ✅ Resolvido em DEBT-002 |
-| DEBT-003 | `src/rename_controller.py` | `HistoryManager` nunca instanciado/conectado | ✅ Resolvido em DEBT-003 |
-| DEBT-004 | `src/main_window.py` | `FilterSortManager` nunca conectado à UI | Baixa — deferido para Q4 |
-| DEBT-005 | `installer.nsi` vs `windows_installer.nsi` | Dois arquivos NSIS duplicados | ✅ Resolvido em FEATURE-001 |
-
-> **Nota DEBT-001:** A triplicação não estava em `src/file_manager.py` como documentado originalmente,
-> mas em `src/main_window.py` — onde `FileOperationError`, `validate_new_names`, `rename_files`,
-> `undo_rename` e `get_safe_filename` apareciam 3× cada, totalizando 1020 linhas.
+| ID | Arquivo | Problema |
+|---|---|---|
+| DEBT-004 | `src/main_window.py` | `FilterSortManager` nunca conectado à UI — deferido para Q4 |
 
 ---
 
@@ -378,41 +247,11 @@ git push origin v1.2.0
 
 ---
 
-## Histórico de Implementação (v1.0.0 → v1.2.0)
+## Estado Atual — v1.2.0 (2026-06-26)
 
-```
-[DEBT-001] ✅ Limpeza main_window.py        → 1020 → 390 linhas
-[DEBT-002] ✅ Fix fill handle duplicado     → self.dragging removido de SpreadsheetView
-[DEBT-003] ✅ Conectar HistoryManager       → RenameController + Ctrl+Z/Y
-[DEBT-005] ✅ Remover NSIS duplicado        → windows_installer.nsi removido
+**210 testes passam** (9 módulos). Ver histórico completo em [specs/roadmap/2026-Q3.md](specs/roadmap/2026-Q3.md).
 
-[FEATURE-001] ✅ Build Pipeline             → src/version.py, GitHub Actions, NSIS
-[FEATURE-002] ✅ Extração PDF               → src/pdf_metadata_extractor.py
-[FEATURE-003] ✅ Busca Online               → src/metadata_lookup.py
-[FEATURE-004] ✅ Catalogação CDD            → src/cataloging_engine.py
-[FEATURE-005] ✅ Planilha + Undo            → HistoryManager, Preview col, QProgressDialog
-[FEATURE-006] ✅ Layout Dual-Faixa          → DualBandTableModel, GroupedHeaderView
-[FEATURE-007] ✅ Busca ISBN Completa        → SearchPipeline, SearchWorker, pdf_metadata_writer
-[FEATURE-008] ✅ Regressões + Polimento     → parser FILENAME_PATTERNS, dark mode, toolbar
-[FEATURE-009] ✅ Busca em Duas Fases        → _lookup_by_title_then_isbn, 72 testes
-[FEATURE-010] ✅ Coluna Novo ISBN           → COL_NEW_ISBN, validação 978/979, write-back PDF
-[FEATURE-011] ✅ Coluna Classificação       → COL_NEW_CLASSIF, category_to_cdd
-```
-
-**Suite de testes v1.2.0:** 210 testes passam (9 módulos válidos).
-
----
-
-## Backlog v1.3.x (Q4 2026)
-
-```
-[ ] Write-back de metadados em EPUB (ebooklib)         P2
-[ ] Backup automático .pdf.bak antes de write-back     P2
-[ ] Filtro de extensão na toolbar (FilterSortManager)  P3
-[ ] Painel de histórico com timestamp                  P3
-[ ] Code signing do instalador Windows                 P3
-[ ] Auto-update ao abrir o app                        P3
-```
+**Backlog v1.3.x (Q4 2026):** ver [specs/roadmap/2026-Q3.md](specs/roadmap/2026-Q3.md).
 
 ---
 

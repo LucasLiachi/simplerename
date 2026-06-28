@@ -1,7 +1,7 @@
 # Feature: Correções de Regressão e Polimento — v1.1.2
 **ID:** FEATURE-008
 **Epic:** EPIC-001
-**Status:** Pending
+**Status:** Done
 **Priority:** P0 (blocker de release v1.1.2)
 **Author:** PP-Planner
 **Created:** 2026-06-26
