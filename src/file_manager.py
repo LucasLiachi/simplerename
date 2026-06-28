@@ -46,6 +46,10 @@ class FileRow:
     new_publisher:     Optional[str] = None
     new_isbn:          Optional[str] = None
     new_classification: Optional[str] = None
+    new_catalog:       Optional[str] = None   # referência bibliográfica ABNT
+
+    # Seleção — controla quais arquivos serão buscados/renomeados
+    selected: bool = False
 
     # Controle interno
     field_origins:   Dict[str, str]  = dc_field(default_factory=dict)
@@ -60,7 +64,7 @@ class FileRow:
 
 # --- Constantes de colunas para DualBandTableModel ---
 
-COL_QUALITY      = 0
+COL_SELECTED     = 0   # checkbox de seleção (substitui COL_QUALITY)
 COL_CURR_NAME    = 1
 COL_FORMAT       = 2
 COL_CURR_TITLE   = 3
@@ -75,55 +79,45 @@ COL_NEW_YEAR     = 11
 COL_NEW_PUB      = 12
 COL_NEW_ISBN     = 13
 COL_NEW_CLASSIF  = 14
-COL_PREVIEW      = 15
+COL_NEW_CATALOG  = 15   # referência bibliográfica ABNT
+COL_PREVIEW      = 16   # shifted
 
-BLUE_COLS   = {COL_QUALITY, COL_CURR_NAME, COL_FORMAT, COL_CURR_TITLE,
+BLUE_COLS   = {COL_CURR_NAME, COL_FORMAT, COL_CURR_TITLE,
                COL_CURR_AUTHOR, COL_CURR_ISBN, COL_CURR_YEAR, COL_CURR_PUB}
 GREEN_COLS  = {COL_NEW_NAME, COL_NEW_TITLE, COL_NEW_AUTHOR,
-               COL_NEW_YEAR, COL_NEW_PUB, COL_NEW_ISBN, COL_NEW_CLASSIF}
+               COL_NEW_YEAR, COL_NEW_PUB, COL_NEW_ISBN, COL_NEW_CLASSIF, COL_NEW_CATALOG}
 PREVIEW_COL = COL_PREVIEW
 
 GREEN_COL_KEYS = {
-    COL_NEW_NAME:   "new_filename",
-    COL_NEW_TITLE:  "new_title",
-    COL_NEW_AUTHOR: "new_author",
-    COL_NEW_YEAR:   "new_year",
-    COL_NEW_PUB:    "new_publisher",
+    COL_NEW_NAME:    "new_filename",
+    COL_NEW_TITLE:   "new_title",
+    COL_NEW_AUTHOR:  "new_author",
+    COL_NEW_YEAR:    "new_year",
+    COL_NEW_PUB:     "new_publisher",
     COL_NEW_ISBN:    "new_isbn",
     COL_NEW_CLASSIF: "new_classification",
+    COL_NEW_CATALOG: "new_catalog",
 }
 
 HEADERS = [
-    "⚫",
-    "Nome Atual",
-    "Formato",
-    "Titulo Atual",
-    "Autor Atual",
-    "ISBN Atual",
-    "Ano Atual",
-    "Editora Atual",
-    "Novo Nome",
-    "Novo Titulo",
-    "Novo Autor",
-    "Novo Ano",
-    "Nova Editora",
-    "Novo ISBN",
-    "Classificação",
-    "Preview",
+    "✓",             # 0  — checkbox de seleção
+    "Nome Atual",    # 1
+    "Formato",       # 2
+    "Titulo Atual",  # 3
+    "Autor Atual",   # 4
+    "ISBN Atual",    # 5
+    "Ano Atual",     # 6
+    "Editora Atual", # 7
+    "Novo Nome",     # 8
+    "Novo Titulo",   # 9
+    "Novo Autor",    # 10
+    "Novo Ano",      # 11
+    "Nova Editora",  # 12
+    "Novo ISBN",     # 13
+    "Classificação", # 14
+    "Catálogo ABNT", # 15
+    "Preview",       # 16
 ]
-
-QUALITY_COLORS = {
-    MetadataQuality.COMPLETE: "\U0001f7e2",   # 🟢
-    MetadataQuality.PARTIAL:  "\U0001f7e1",   # 🟡
-    MetadataQuality.EMPTY:    "\U0001f534",   # 🔴
-}
-
-COLOR_BLUE_BG  = QColor(230, 241, 251)   # #E6F1FB
-COLOR_GREEN_OK = QColor(234, 243, 222)   # verde confirmado
-COLOR_AMBER    = QColor(250, 238, 218)   # ambar: sugestao pendente
-COLOR_WHITE    = QColor(255, 255, 255)
-COLOR_PREVIEW  = QColor(238, 238, 238)
-COLOR_ERROR    = QColor(255, 220, 220)   # vermelho claro: erro de validacao
 
 
 class DualBandTableModel(QAbstractTableModel):
@@ -156,6 +150,9 @@ class DualBandTableModel(QAbstractTableModel):
         row = self.rows[index.row()]
         col = index.column()
 
+        if role == Qt.ItemDataRole.CheckStateRole and col == COL_SELECTED:
+            return Qt.CheckState.Checked if row.selected else Qt.CheckState.Unchecked
+
         if role == Qt.ItemDataRole.DisplayRole:
             return self._display(row, col)
 
@@ -172,7 +169,7 @@ class DualBandTableModel(QAbstractTableModel):
 
     def _display(self, row: FileRow, col: int) -> Optional[str]:
         """Retorna o texto a exibir para cada coluna."""
-        if col == COL_QUALITY:      return QUALITY_COLORS.get(row.metadata_quality, "\U0001f534")
+        if col == COL_SELECTED:     return None   # exibido via CheckStateRole
         if col == COL_CURR_NAME:    return row.current_filename
         if col == COL_FORMAT:       return row.file_extension.lstrip(".")
         if col == COL_CURR_TITLE:   return row.current_title or ""
@@ -187,19 +184,17 @@ class DualBandTableModel(QAbstractTableModel):
         if col == COL_NEW_PUB:      return row.new_publisher or ""
         if col == COL_NEW_ISBN:     return row.new_isbn or ""
         if col == COL_NEW_CLASSIF:  return row.new_classification or ""
+        if col == COL_NEW_CATALOG:  return row.new_catalog or ""
         if col == COL_PREVIEW:      return row.preview
         return None
 
     def _cell_background(self, col: int, row_data: "FileRow") -> QColor:
-        """Retorna a cor de fundo da célula com suporte a dark/light mode.
-
-        Args:
-            col: Índice da coluna.
-            row_data: FileRow com dados da linha.
-        """
+        """Retorna a cor de fundo da célula com suporte a dark/light mode."""
         is_dark = (QApplication.palette()
                    .color(QPalette.ColorRole.Window)
                    .lightness() < 128)
+        if col == COL_SELECTED:
+            return QColor(50, 50, 55) if is_dark else QColor(242, 242, 242)
         if col in BLUE_COLS:
             return QColor(30, 60, 100) if is_dark else QColor(210, 230, 248)
         if col == PREVIEW_COL:
@@ -207,21 +202,23 @@ class DualBandTableModel(QAbstractTableModel):
         field_key = GREEN_COL_KEYS.get(col)
         if not field_key:
             return QColor()
-        value     = getattr(row_data, field_key, None)
-        confirmed = row_data.field_confirmed.get(field_key, False)
+        value = getattr(row_data, field_key, None)
+        # ISBN inválido → vermelho
         if field_key == "new_isbn" and value:
             from .pdf_metadata_extractor import normalize_isbn
             if normalize_isbn(value) is None or not normalize_isbn(value).startswith(("978", "979")):
                 return QColor(80, 10, 10) if is_dark else QColor(255, 200, 200)
-        if confirmed and value:
-            return QColor(20, 70, 30)  if is_dark else QColor(200, 235, 200)
-        if value is not None:
-            return QColor(80, 55, 10)  if is_dark else QColor(255, 235, 180)
-        return QColor(45, 45, 50)      if is_dark else QColor(255, 255, 255)
+        # Célula verde com dados → verde; vazia → branco
+        if value:
+            return QColor(20, 70, 30) if is_dark else QColor(200, 235, 200)
+        return QColor(45, 45, 50) if is_dark else QColor(255, 255, 255)
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
-        """Colunas da faixa azul e Preview sao read-only; faixa verde e editavel."""
+        """Coluna de seleção é checkable; faixa azul e Preview são read-only; verde é editável."""
         col = index.column()
+        if col == COL_SELECTED:
+            return (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+                    | Qt.ItemFlag.ItemIsUserCheckable)
         if col in BLUE_COLS or col == PREVIEW_COL:
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         return (Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
@@ -229,14 +226,23 @@ class DualBandTableModel(QAbstractTableModel):
 
     def setData(self, index: QModelIndex, value: Any,
                 role: Qt.ItemDataRole = Qt.ItemDataRole.EditRole) -> bool:
-        """Persiste edicao manual em campo da faixa verde."""
-        if not index.isValid() or role != Qt.ItemDataRole.EditRole:
+        """Persiste checkbox de seleção ou edição manual em campo da faixa verde."""
+        if not index.isValid():
             return False
         col = index.column()
+        row = self.rows[index.row()]
+
+        # Checkbox de seleção
+        if role == Qt.ItemDataRole.CheckStateRole and col == COL_SELECTED:
+            row.selected = (value == Qt.CheckState.Checked or value == 2)
+            self.dataChanged.emit(index, index, [Qt.ItemDataRole.CheckStateRole])
+            return True
+
+        if role != Qt.ItemDataRole.EditRole:
+            return False
         if col not in GREEN_COLS:
             return False
         key = GREEN_COL_KEYS[col]
-        row = self.rows[index.row()]
 
         if key == "new_isbn" and value:
             from .pdf_metadata_extractor import normalize_isbn
@@ -246,7 +252,7 @@ class DualBandTableModel(QAbstractTableModel):
             value = normalized
 
         setattr(row, key, value or None)
-        row.field_origins[key]   = "✎"   # lapis manual
+        row.field_origins[key]   = "✎"
         row.field_confirmed[key] = True
         self.dataChanged.emit(index, self.index(index.row(), COL_PREVIEW))
         return True
@@ -364,7 +370,7 @@ class DualBandTableModel(QAbstractTableModel):
         row = self.rows[row_idx]
         for key in ("new_filename", "new_title", "new_author",
                     "new_year", "new_publisher", "new_isbn",
-                    "new_classification"):
+                    "new_classification", "new_catalog"):
             if getattr(row, key) is not None:
                 row.field_confirmed[key] = True
         self.dataChanged.emit(
@@ -383,7 +389,7 @@ class DualBandTableModel(QAbstractTableModel):
         row = self.rows[row_idx]
         for key in ("new_filename", "new_title", "new_author",
                     "new_year", "new_publisher", "new_isbn",
-                    "new_classification"):
+                    "new_classification", "new_catalog"):
             setattr(row, key, None)
             row.field_origins.pop(key, None)
             row.field_confirmed.pop(key, None)
@@ -398,7 +404,24 @@ class DualBandTableModel(QAbstractTableModel):
             self.confirm_row(i)
 
     def get_changes(self) -> List[tuple]:
-        """Retorna lista de (original_path, new_filename+ext) para rename.
+        """Retorna lista de (original_path, new_filename+ext) para linhas marcadas.
+
+        Apenas linhas com selected=True e new_filename diferente do atual são incluídas.
+
+        Returns:
+            Lista de tuplas (caminho_original, novo_nome_completo).
+        """
+        changes = []
+        for row in self.rows:
+            if row.selected and row.new_filename and row.new_filename != row.current_filename:
+                new_name = row.new_filename + row.file_extension
+                changes.append((row.original_path, new_name))
+        return changes
+
+    def get_all_changes(self) -> List[tuple]:
+        """Retorna lista de (original_path, new_filename+ext) para TODAS as linhas com proposta.
+
+        Ignora seleção — usado para testes e operações em lote sem checkbox.
 
         Returns:
             Lista de tuplas (caminho_original, novo_nome_completo).

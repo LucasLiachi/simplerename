@@ -1,7 +1,7 @@
 """
-Extração de metadados embutidos em arquivos PDF de livros.
+Extração de metadados embutidos em arquivos de livros (PDF, EPUB, MOBI, FB2).
 
-Usa PyMuPDF (fitz) como extrator primário e pypdf como fallback.
+Usa PyMuPDF (fitz) como extrator primário e pypdf como fallback para PDF.
 Nunca lança exceção — retorna BookMetadata com quality=EMPTY em caso de falha.
 
 Dependências: PyMuPDF>=1.23.0, pypdf>=3.17.0
@@ -9,6 +9,7 @@ Licença PyMuPDF: AGPL-3.0 (ver ADR-002)
 """
 from __future__ import annotations
 
+import os
 import re
 import logging
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ class BookMetadata:
     year:      Optional[str] = None
     publisher: Optional[str] = None
     quality:   MetadataQuality = MetadataQuality.EMPTY
-    source:    str = "empty"  # "pymupdf_docinfo"|"pymupdf_xmp"|"pypdf"|"empty"
+    source:    str = "empty"  # "pymupdf_docinfo"|"pymupdf_xmp"|"pypdf"|"fitz_epub"|"empty"
 
     def __post_init__(self):
         self.quality = self._compute_quality()
@@ -76,18 +77,37 @@ def _extract_isbn_from_text(text: str) -> Optional[str]:
     return None
 
 
-_GARBAGE_AUTHORS = frozenset({
+_GARBAGE_STRINGS = frozenset({
     "unknown", "unknown author", "autor desconhecido",
     "adobe acrobat", "microsoft", "scanner", "pdf creator",
     "word", "libreoffice", "openoffice", "",
 })
 
+_GARBAGE_PUBLISHER_PREFIXES = (
+    "microsoft", "adobe", "pdf creator", "libreoffice",
+    "openoffice", "word", "scanner", "unknown",
+)
+
 
 def _clean_string(value: Optional[str]) -> Optional[str]:
+    """Limpa strings genéricas (autor, título)."""
     if not value:
         return None
     cleaned = value.strip()
-    if cleaned.lower() in _GARBAGE_AUTHORS:
+    if cleaned.lower() in _GARBAGE_STRINGS:
+        return None
+    return cleaned or None
+
+
+def _clean_publisher(value: Optional[str]) -> Optional[str]:
+    """Limpa campo publisher: descarta ferramentas PDF e valores genéricos."""
+    if not value:
+        return None
+    cleaned = value.strip()
+    lower = cleaned.lower()
+    if lower in _GARBAGE_STRINGS:
+        return None
+    if any(lower.startswith(p) for p in _GARBAGE_PUBLISHER_PREFIXES):
         return None
     return cleaned or None
 
@@ -100,14 +120,14 @@ def _extract_year(value: Optional[str]) -> Optional[str]:
 
 
 def _extract_with_pymupdf(pdf_path: str) -> Optional[BookMetadata]:
-    """Extrai via PyMuPDF — tenta DocInfo e XMP."""
+    """Extrai via PyMuPDF — tenta DocInfo e XMP (apenas PDF)."""
     try:
         import fitz
         doc = fitz.open(pdf_path)
         meta = doc.metadata or {}
         title     = _clean_string(meta.get("title"))
         author    = _clean_string(meta.get("author"))
-        publisher = _clean_string(meta.get("creator"))
+        publisher = _clean_publisher(meta.get("creator"))
         year      = _extract_year(meta.get("creationDate") or meta.get("modDate"))
         isbn      = (_extract_isbn_from_text(meta.get("keywords", "") or "")
                      or _extract_isbn_from_text(meta.get("subject", "") or ""))
@@ -149,7 +169,7 @@ def _extract_with_pymupdf(pdf_path: str) -> Optional[BookMetadata]:
 
 
 def _extract_with_pypdf(pdf_path: str) -> Optional[BookMetadata]:
-    """Fallback usando pypdf (MIT)."""
+    """Fallback usando pypdf (MIT) — apenas PDF."""
     try:
         from pypdf import PdfReader
         reader = PdfReader(pdf_path, strict=False)
@@ -158,7 +178,7 @@ def _extract_with_pypdf(pdf_path: str) -> Optional[BookMetadata]:
         author    = _clean_string(getattr(info, "author", None))
         year      = _extract_year(str(getattr(info, "creation_date", "") or ""))
         isbn      = _extract_isbn_from_text(str(getattr(info, "subject", "") or ""))
-        publisher = _clean_string(getattr(info, "creator", None))
+        publisher = _clean_publisher(getattr(info, "creator", None))
         if not any([title, author, isbn, year]):
             return None
         return BookMetadata(title=title, author=author, isbn=isbn,
@@ -168,26 +188,62 @@ def _extract_with_pypdf(pdf_path: str) -> Optional[BookMetadata]:
         return None
 
 
-def extract_metadata(pdf_path: str) -> BookMetadata:
-    """
-    Extrai metadados de um PDF. Nunca lança exceção.
+def _extract_with_fitz_generic(file_path: str) -> Optional[BookMetadata]:
+    """Extrai metadados via PyMuPDF para EPUB, MOBI, FB2 e outros formatos suportados."""
+    try:
+        import fitz
+        doc  = fitz.open(file_path)
+        meta = doc.metadata or {}
+        title     = _clean_string(meta.get("title"))
+        author    = _clean_string(meta.get("author"))
+        publisher = _clean_publisher(meta.get("creator") or meta.get("producer"))
+        year      = _extract_year(
+            meta.get("creationDate") or meta.get("modDate") or meta.get("date", "")
+        )
+        isbn = (
+            _extract_isbn_from_text(meta.get("keywords", "") or "")
+            or _extract_isbn_from_text(meta.get("subject", "") or "")
+            or _extract_isbn_from_text(meta.get("identifier", "") or "")
+        )
+        doc.close()
+        if not any([title, author, isbn, year]):
+            return None
+        ext    = os.path.splitext(file_path)[1].lower().lstrip(".")
+        source = f"fitz_{ext}"
+        return BookMetadata(title=title, author=author, isbn=isbn,
+                            year=year, publisher=publisher, source=source)
+    except ImportError:
+        return None
+    except Exception as e:
+        logger.warning(f"fitz falhou para {file_path}: {e}")
+        return None
 
-    Tenta PyMuPDF primeiro (melhor suporte XMP), pypdf como fallback.
+
+def extract_metadata(file_path: str) -> BookMetadata:
+    """
+    Extrai metadados de um arquivo de livro. Nunca lança exceção.
+
+    Suporta: PDF (PyMuPDF + pypdf fallback), EPUB, MOBI, FB2 (PyMuPDF).
     Retorna BookMetadata com quality=EMPTY se nenhum extrator obtiver dados.
 
     Args:
-        pdf_path: Caminho absoluto para o arquivo PDF.
+        file_path: Caminho absoluto para o arquivo.
 
     Returns:
         BookMetadata com os campos extraídos e quality calculada.
     """
     try:
-        result = _extract_with_pymupdf(pdf_path)
-        if result is None:
-            result = _extract_with_pypdf(pdf_path)
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".pdf":
+            result = _extract_with_pymupdf(file_path)
+            if result is None:
+                result = _extract_with_pypdf(file_path)
+        elif ext in (".epub", ".mobi", ".fb2", ".cbz", ".xps"):
+            result = _extract_with_fitz_generic(file_path)
+        else:
+            result = None
     except Exception as e:
-        logger.error(f"Erro inesperado ao extrair metadados de {pdf_path}: {e}")
+        logger.error(f"Erro inesperado ao extrair metadados de {file_path}: {e}")
         result = None
-    if result is None:
-        result = BookMetadata(source="empty")
-    return result
+
+    return result if result is not None else BookMetadata(source="empty")

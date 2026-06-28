@@ -92,221 +92,93 @@ class MainWindow(QMainWindow):
         # SearchPipeline — inicializado lazy (FEATURE-007)
         self._search_pipeline: object = None
 
-        # Toolbar com 11 ações em 5 grupos
+        # Toolbar com 4 ações
         self._setup_toolbar()
 
-        # Atualiza estado da toolbar sempre que seleção ou dados mudam
-        self.spreadsheet_view.selectionModel().selectionChanged.connect(
-            lambda: self._update_toolbar_state()
-        )
+        # Atualiza estado da toolbar sempre que dados mudam
         self.spreadsheet_view.model.dataChanged.connect(
             lambda: self._update_toolbar_state()
         )
-        self.history_manager.historyChanged.connect(self._update_toolbar_state)
-
-        # Keyboard shortcuts for undo / redo
-        undo_shortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
-        undo_shortcut.activated.connect(self._on_undo)
-
-        redo_shortcut = QShortcut(QKeySequence("Ctrl+Y"), self)
-        redo_shortcut.activated.connect(self._on_redo)
 
         self._update_toolbar_state()
 
     def _setup_toolbar(self) -> None:
-        """Cria toolbar principal com 11 ações em 5 grupos."""
+        """Cria toolbar com 4 ações: Abrir Pasta, Buscar Marcados, Renomear Marcados, Recarregar."""
         tb = self.addToolBar("Principal")
         tb.setMovable(False)
 
-        # Grupo 1 — Identificar
         self.browse_action = QAction("Abrir Pasta", self)
         self.browse_action.setToolTip("Selecionar a pasta com os arquivos a organizar")
+
+        self.search_marked_action = QAction("Buscar Marcados", self)
+        self.search_marked_action.setToolTip("Buscar metadados online para arquivos marcados (☑)")
+        self.search_marked_action.setEnabled(False)
+
+        self.rename_marked_action = QAction("Renomear Marcados ▶", self)
+        self.rename_marked_action.setToolTip("Renomear arquivos marcados com a proposta da faixa verde")
+        self.rename_marked_action.setEnabled(False)
+
+        self.reload_action = QAction("Recarregar Pasta", self)
+        self.reload_action.setToolTip("Recarregar a pasta atual do disco")
+        self.reload_action.setEnabled(False)
+
         tb.addAction(self.browse_action)
         tb.addSeparator()
-
-        # Grupo 2 — Buscar
-        self.search_selected_action = QAction("Buscar (Linha)", self)
-        self.search_selected_action.setToolTip("Buscar metadados online para a linha selecionada")
-        self.search_selected_action.setEnabled(False)
-
-        self.search_incomplete_action = QAction("Buscar Incompletos", self)
-        self.search_incomplete_action.setToolTip("Buscar metadados para linhas sem dados (\U0001f534/\U0001f7e1)")
-        self.search_incomplete_action.setEnabled(False)
-
-        self.search_all_action = QAction("Buscar Todos", self)
-        self.search_all_action.setToolTip("Buscar metadados para todas as linhas da planilha")
-        self.search_all_action.setEnabled(False)
-
-        tb.addAction(self.search_selected_action)
-        tb.addAction(self.search_incomplete_action)
-        tb.addAction(self.search_all_action)
+        tb.addAction(self.search_marked_action)
         tb.addSeparator()
-
-        # Grupo 3 — Revisar
-        self.confirm_row_action = QAction("Confirmar Linha ✓", self)
-        self.confirm_row_action.setToolTip("Aceitar todas as sugestoes da linha selecionada")
-        self.confirm_row_action.setEnabled(False)
-
-        self.confirm_all_action = QAction("Confirmar Todos ✓✓", self)
-        self.confirm_all_action.setToolTip("Aceitar todas as sugestoes de todas as linhas")
-        self.confirm_all_action.setEnabled(False)
-
-        self.clear_proposal_action = QAction("Limpar Proposta ✗", self)
-        self.clear_proposal_action.setToolTip("Apagar a faixa verde da linha selecionada")
-        self.clear_proposal_action.setEnabled(False)
-
-        tb.addAction(self.confirm_row_action)
-        tb.addAction(self.confirm_all_action)
-        tb.addAction(self.clear_proposal_action)
+        tb.addAction(self.rename_marked_action)
         tb.addSeparator()
+        tb.addAction(self.reload_action)
 
-        # Grupo 4 — Aplicar
-        self.apply_action = QAction("Aplicar Rename ▶", self)
-        self.apply_action.setToolTip("Renomear arquivos e gravar metadados confirmados no PDF")
-        self.apply_action.setEnabled(False)
-
-        self.apply_folders_action = QAction("Aplicar com Pastas \U0001f4c1", self)
-        self.apply_folders_action.setToolTip("Renomear e mover para subpastas CDD")
-        self.apply_folders_action.setEnabled(False)
-
-        tb.addAction(self.apply_action)
-        tb.addAction(self.apply_folders_action)
-        tb.addSeparator()
-
-        # Grupo 5 — Histórico
-        self.undo_action = QAction("Desfazer ↩", self)
-        self.undo_action.setToolTip("Reverter o último rename aplicado em disco")
-        self.undo_action.setEnabled(False)
-
-        self.redo_action = QAction("Refazer ↪", self)
-        self.redo_action.setToolTip("Refazer o rename desfeito")
-        self.redo_action.setEnabled(False)
-
-        tb.addAction(self.undo_action)
-        tb.addAction(self.redo_action)
-
-        # Conectar sinais
         self.browse_action.triggered.connect(self._on_browse)
-        self.search_selected_action.triggered.connect(self._on_search_selected)
-        self.search_incomplete_action.triggered.connect(self._on_search_incomplete)
-        self.search_all_action.triggered.connect(self._on_search_all)
-        self.confirm_row_action.triggered.connect(self._on_confirm_row)
-        self.confirm_all_action.triggered.connect(self._on_confirm_all)
-        self.clear_proposal_action.triggered.connect(self._on_clear_proposal)
-        self.apply_action.triggered.connect(self._on_apply)
-        self.apply_folders_action.triggered.connect(self._on_apply_folders)
-        self.undo_action.triggered.connect(self._on_undo)
-        self.redo_action.triggered.connect(self._on_redo)
+        self.search_marked_action.triggered.connect(self._on_search_marked)
+        self.rename_marked_action.triggered.connect(self._on_rename_marked)
+        self.reload_action.triggered.connect(self._on_reload)
 
     def _update_toolbar_state(self) -> None:
-        """Habilita/desabilita botões da toolbar conforme estado atual do model e seleção."""
-        from .pdf_metadata_extractor import MetadataQuality
+        """Habilita/desabilita os 4 botões da toolbar conforme estado do model."""
         from .file_manager import DualBandTableModel
-
         model = self.spreadsheet_view.model
-        has_rows = isinstance(model, DualBandTableModel) and bool(model.rows)
-        rows = model.rows if has_rows else []
+        rows  = model.rows if isinstance(model, DualBandTableModel) else []
 
-        selected = self.spreadsheet_view.selectedIndexes()
-        has_selection = bool(selected)
-        sel_row = selected[0].row() if has_selection and rows else -1
-        sel_fr = rows[sel_row] if 0 <= sel_row < len(rows) else None
+        has_marked              = any(r.selected for r in rows)
+        has_marked_with_proposal = any(r.selected and r.new_filename for r in rows)
 
-        self.search_selected_action.setEnabled(has_selection)
-        self.search_incomplete_action.setEnabled(
-            any(r.metadata_quality != MetadataQuality.COMPLETE for r in rows)
-        )
-        self.search_all_action.setEnabled(has_rows)
-
-        _green_keys = ("new_filename", "new_title", "new_author", "new_year",
-                       "new_publisher", "new_isbn", "new_classification")
-        has_unconfirmed_row = sel_fr is not None and any(
-            getattr(sel_fr, k) is not None and not sel_fr.field_confirmed.get(k)
-            for k in _green_keys
-        )
-        self.confirm_row_action.setEnabled(has_unconfirmed_row)
-
-        has_unconfirmed_any = any(
-            getattr(r, k) is not None and not r.field_confirmed.get(k)
-            for r in rows for k in _green_keys
-        )
-        self.confirm_all_action.setEnabled(has_unconfirmed_any)
-
-        has_green_data = sel_fr is not None and any(
-            getattr(sel_fr, k) is not None for k in _green_keys
-        )
-        self.clear_proposal_action.setEnabled(has_green_data)
-
-        has_confirmed_rename = any(
-            r.new_filename and r.field_confirmed.get("new_filename") for r in rows
-        )
-        self.apply_action.setEnabled(has_confirmed_rename)
-        self.apply_folders_action.setEnabled(has_confirmed_rename)
-
-        self.undo_action.setEnabled(bool(self.history_manager.undo_stack))
-        self.redo_action.setEnabled(bool(self.history_manager.redo_stack))
+        self.search_marked_action.setEnabled(has_marked)
+        self.rename_marked_action.setEnabled(has_marked_with_proposal)
+        self.reload_action.setEnabled(bool(self.current_directory))
 
     # ---------------------------------------------------------------------------
     # Handlers da toolbar
     # ---------------------------------------------------------------------------
 
     def _on_browse(self) -> None:
-        """Handler para Abrir Pasta."""
+        """Abre seletor de pasta."""
         self.open_directory()
 
-    def _on_search_selected(self) -> None:
-        """Busca metadados via SearchPipeline para a linha selecionada."""
+    def _on_search_marked(self) -> None:
+        """Busca metadados via SearchPipeline para todos os arquivos marcados (☑)."""
         from .file_manager import DualBandTableModel
-        indexes = self.spreadsheet_view.selectedIndexes()
-        if not indexes:
-            self.statusBar().showMessage("Selecione uma linha primeiro")
-            return
         model = self.spreadsheet_view.model
         if not isinstance(model, DualBandTableModel):
             return
-        row_idx = indexes[0].row()
-        self._start_search_worker([(row_idx, model.rows[row_idx])])
-
-    def _on_search_incomplete(self) -> None:
-        """Busca metadados para linhas incompletas."""
-        self._search_incomplete()
-
-    def _on_search_all(self) -> None:
-        """Busca metadados para todas as linhas."""
-        from .file_manager import DualBandTableModel
-        model = self.spreadsheet_view.model
-        if not isinstance(model, DualBandTableModel) or not model.rows:
-            self.statusBar().showMessage("Nenhum arquivo carregado")
+        rows = [(i, row) for i, row in enumerate(model.rows) if row.selected]
+        if not rows:
+            self.statusBar().showMessage("Marque pelo menos um arquivo primeiro")
             return
-        self._start_search_worker(list(enumerate(model.rows)))
+        self._start_search_worker(rows)
 
-    def _on_confirm_row(self) -> None:
-        """Confirma sugestoes da linha selecionada."""
-        self._confirm_selected_row()
-
-    def _on_confirm_all(self) -> None:
-        """Confirma todas as sugestoes."""
-        self._confirm_all()
-
-    def _on_clear_proposal(self) -> None:
-        """Limpa proposta da linha selecionada."""
-        self._clear_selected_proposal()
-
-    def _on_apply(self) -> None:
-        """Aplica renames confirmados."""
+    def _on_rename_marked(self) -> None:
+        """Renomeia arquivos marcados com proposta da faixa verde."""
         self.apply_changes()
 
-    def _on_apply_folders(self) -> None:
-        """Aplica renames com organização por pastas CDD."""
-        self._apply_with_folders()
-
-    def _on_undo(self) -> None:
-        """Desfaz último rename."""
-        self.undo_rename()
-
-    def _on_redo(self) -> None:
-        """Refaz último rename desfeito."""
-        self.redo_rename()
+    def _on_reload(self) -> None:
+        """Recarrega a pasta atual do disco."""
+        if self.current_directory:
+            self.spreadsheet_view.load_directory(self.current_directory)
+            self.statusBar().showMessage("Pasta recarregada")
+        else:
+            self.statusBar().showMessage("Nenhuma pasta selecionada")
 
     def _save_history(self) -> None:
         """Persist the current history to disk."""

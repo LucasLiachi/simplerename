@@ -133,6 +133,25 @@ def _validate_publisher(raw: Optional[str]) -> Optional[str]:
     return None if _PUBLISHER_BLACKLIST.search(raw) else raw.strip()
 
 
+def _build_catalog_entry(author: Optional[str], title: Optional[str],
+                         publisher: Optional[str], year: Optional[str]) -> Optional[str]:
+    """Gera referência bibliográfica no estilo ABNT simplificado.
+
+    Exemplo: CAMUS, Albert. O Estrangeiro. Gallimard, 1942.
+    """
+    if not title:
+        return None
+    parts: list = []
+    if author:
+        parts.append(f"{author}.")
+    parts.append(f"{title}.")
+    if publisher:
+        parts.append(f"{publisher},")
+    if year:
+        parts.append(f"{year}.")
+    return " ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # SearchPipeline
 # ---------------------------------------------------------------------------
@@ -242,8 +261,6 @@ class SearchPipeline:
         """
         Preenche a faixa verde da FileRow com o resultado da busca.
 
-        Todos os campos preenchidos recebem estado âmbar (sugerido, não confirmado).
-
         Args:
             row: FileRow a atualizar (modificada in-place).
             result: LookupResult com os dados encontrados.
@@ -273,12 +290,17 @@ class SearchPipeline:
         row.new_filename       = filename_full.rsplit(".", 1)[0] if "." in filename_full else filename_full
         row.new_classification = suggestion.folder_path
 
-        # Badge de origem e estado âmbar (não confirmado)
+        # Gerar referência bibliográfica ABNT
+        row.new_catalog = _build_catalog_entry(
+            row.new_author, row.new_title, row.new_publisher, row.new_year
+        )
+
+        # Badge de origem
         source = result.source.value
         badge  = "OL" if "library" in source else "GB" if "google" in source else "cache"
         for key in ("new_filename", "new_title", "new_author",
                     "new_year", "new_publisher", "new_isbn",
-                    "new_classification"):
+                    "new_classification", "new_catalog"):
             if getattr(row, key):
                 row.field_origins[key]   = badge
                 row.field_confirmed[key] = False

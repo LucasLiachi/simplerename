@@ -1,7 +1,7 @@
 """Testes para DualBandTableModel e FileRow."""
 import pytest
 from src.file_manager import (DualBandTableModel, FileRow, COL_PREVIEW, COL_NEW_NAME,
-                              COL_NEW_ISBN, COL_NEW_CLASSIF)
+                              COL_NEW_ISBN, COL_NEW_CLASSIF, COL_NEW_CATALOG, COL_SELECTED)
 from PyQt6.QtCore import Qt, QAbstractTableModel
 from src.pdf_metadata_extractor import BookMetadata, MetadataQuality
 
@@ -28,6 +28,16 @@ class TestFileRow:
         """metadata_quality padrao deve ser EMPTY."""
         row = FileRow()
         assert row.metadata_quality == MetadataQuality.EMPTY
+
+    def test_selected_default_false(self):
+        """selected deve ser False por padrão."""
+        row = FileRow()
+        assert row.selected is False
+
+    def test_new_catalog_default_none(self):
+        """new_catalog deve ser None por padrão."""
+        row = FileRow()
+        assert row.new_catalog is None
 
     def test_field_origins_default_empty(self):
         """field_origins deve ser um dict vazio por padrao."""
@@ -56,9 +66,9 @@ class TestDualBandTableModel:
         assert model.rowCount() == 1
 
     def test_column_count(self):
-        """columnCount deve ser 16 (fixo)."""
+        """columnCount deve ser 17 (checkbox + 7 azul + 8 verde + catálogo + preview)."""
         model = self._model_with_files()
-        assert model.columnCount() == 16
+        assert model.columnCount() == 17
 
     def test_empty_model_row_count(self):
         """Model sem arquivos deve ter rowCount == 0."""
@@ -86,12 +96,14 @@ class TestDualBandTableModel:
         idx = model.index(0, COL_PREVIEW)
         assert not (model.flags(idx) & Qt.ItemFlag.ItemIsEditable)
 
-    def test_quality_col_read_only(self):
-        """Coluna de qualidade (COL_QUALITY=0) nao deve ser editavel."""
+    def test_selected_col_is_checkable(self):
+        """Coluna de seleção (COL_SELECTED=0) deve ser UserCheckable, não EditRole."""
         from PyQt6.QtCore import Qt
         model = self._model_with_files()
-        idx = model.index(0, 0)
-        assert not (model.flags(idx) & Qt.ItemFlag.ItemIsEditable)
+        idx = model.index(0, COL_SELECTED)
+        flags = model.flags(idx)
+        assert flags & Qt.ItemFlag.ItemIsUserCheckable
+        assert not (flags & Qt.ItemFlag.ItemIsEditable)
 
     def test_set_metadata_updates_blue_band(self):
         """set_metadata deve preencher a faixa azul com os dados do BookMetadata."""
@@ -152,24 +164,42 @@ class TestDualBandTableModel:
         assert model.rows[0].field_confirmed.get("new_title")
         assert model.rows[1].field_confirmed.get("new_title")
 
-    def test_get_changes_returns_only_renamed(self):
-        """get_changes deve retornar apenas linhas com new_filename diferente do atual."""
+    def test_get_changes_returns_only_selected_renamed(self):
+        """get_changes deve retornar apenas linhas marcadas (selected=True) com novo nome."""
         model = self._model_with_files()
         model.rows[0].new_filename = "novo_nome"
+        model.rows[0].selected = True
         changes = model.get_changes()
         assert len(changes) == 1
         assert changes[0][1] == "novo_nome.pdf"
 
+    def test_get_changes_empty_when_not_selected(self):
+        """get_changes deve retornar lista vazia quando a linha tem proposta mas selected=False."""
+        model = self._model_with_files()
+        model.rows[0].new_filename = "novo_nome"
+        # selected=False por padrão
+        assert model.get_changes() == []
+
     def test_get_changes_empty_when_no_new_name(self):
         """get_changes deve retornar lista vazia quando nenhum new_filename foi definido."""
         model = self._model_with_files()
+        model.rows[0].selected = True
         assert model.get_changes() == []
 
     def test_get_changes_excludes_unchanged(self):
         """get_changes nao deve incluir linha cujo new_filename e igual ao current_filename."""
         model = self._model_with_files()
-        model.rows[0].new_filename = "book"  # igual ao current_filename
+        model.rows[0].new_filename = "book"   # igual ao current_filename
+        model.rows[0].selected = True
         assert model.get_changes() == []
+
+    def test_get_all_changes_ignores_selection(self):
+        """get_all_changes deve retornar todas as linhas com proposta, independente de selected."""
+        model = self._model_with_files()
+        model.rows[0].new_filename = "novo_nome"
+        # selected=False por padrão
+        changes = model.get_all_changes()
+        assert len(changes) == 1
 
     def test_get_metadata_returns_blue_band(self):
         """get_metadata deve retornar BookMetadata com dados da faixa azul."""
@@ -229,11 +259,18 @@ class TestNewIsbnColumn:
         assert header == "Novo ISBN"
 
     def test_classificacao_at_index_14(self):
-        """Após FEATURE-011, coluna 14 é 'Classificação' (Preview passou para 15)."""
+        """Coluna 14 é 'Classificação'."""
         model = self._make_model()
         header = model.headerData(14, Qt.Orientation.Horizontal,
                                   Qt.ItemDataRole.DisplayRole)
         assert header == "Classificação"
+
+    def test_catalog_at_index_15(self):
+        """Coluna 15 deve ser 'Catálogo ABNT'."""
+        model = self._make_model()
+        header = model.headerData(15, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Catálogo ABNT"
 
     def test_novo_isbn_is_editable(self):
         """Coluna 13 (Novo ISBN) deve ser editável."""
@@ -319,10 +356,10 @@ class TestClassificacaoColumn:
                                   Qt.ItemDataRole.DisplayRole)
         assert header == "Classificação"
 
-    def test_preview_shifted_to_index_15(self):
-        """Cabeçalho da coluna 15 deve ser 'Preview'."""
+    def test_preview_shifted_to_index_16(self):
+        """Cabeçalho da coluna 16 deve ser 'Preview' (deslocado pelo Catálogo ABNT)."""
         model = self._make_model()
-        header = model.headerData(15, Qt.Orientation.Horizontal,
+        header = model.headerData(16, Qt.Orientation.Horizontal,
                                   Qt.ItemDataRole.DisplayRole)
         assert header == "Preview"
 
@@ -384,3 +421,122 @@ class TestClassificacaoColumn:
         idx = model.index(0, 14)
         value = model.data(idx, Qt.ItemDataRole.DisplayRole)
         assert value == ""
+
+
+class TestCatalogColumn:
+    """Testes para a coluna Catálogo ABNT (índice 15) na faixa verde."""
+
+    def _make_model(self):
+        model = DualBandTableModel.__new__(DualBandTableModel)
+        QAbstractTableModel.__init__(model)
+        model.rows = [FileRow(current_filename="O Estrangeiro", file_extension=".epub")]
+        return model
+
+    def test_header_catalog_at_index_15(self):
+        """Cabeçalho da coluna 15 deve ser 'Catálogo ABNT'."""
+        model = self._make_model()
+        header = model.headerData(15, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Catálogo ABNT"
+
+    def test_preview_at_index_16(self):
+        """Preview deve estar na coluna 16."""
+        model = self._make_model()
+        header = model.headerData(16, Qt.Orientation.Horizontal,
+                                  Qt.ItemDataRole.DisplayRole)
+        assert header == "Preview"
+
+    def test_catalog_is_editable(self):
+        """Coluna 15 deve ser editável."""
+        model = self._make_model()
+        idx = model.index(0, COL_NEW_CATALOG)
+        assert Qt.ItemFlag.ItemIsEditable in model.flags(idx)
+
+    def test_set_catalog_manual(self):
+        """Edição manual deve aceitar qualquer texto e marcar origem '✎'."""
+        model = self._make_model()
+        idx = model.index(0, COL_NEW_CATALOG)
+        result = model.setData(idx, "CAMUS, Albert. O Estrangeiro. Record, 1990.")
+        assert result is True
+        assert model.rows[0].new_catalog == "CAMUS, Albert. O Estrangeiro. Record, 1990."
+        assert model.rows[0].field_origins["new_catalog"] == "✎"
+
+    def test_display_empty_when_not_set(self):
+        """Coluna 15 deve exibir string vazia quando new_catalog é None."""
+        model = self._make_model()
+        idx = model.index(0, COL_NEW_CATALOG)
+        value = model.data(idx, Qt.ItemDataRole.DisplayRole)
+        assert value == ""
+
+    def test_clear_proposal_removes_catalog(self):
+        """clear_proposal() deve apagar new_catalog."""
+        model = self._make_model()
+        model.rows[0].new_catalog = "CAMUS, Albert. O Estrangeiro."
+        model.clear_proposal(0)
+        assert model.rows[0].new_catalog is None
+
+
+class TestCheckboxColumn:
+    """Testes para a coluna de seleção (COL_SELECTED = 0)."""
+
+    def _make_model(self):
+        model = DualBandTableModel.__new__(DualBandTableModel)
+        QAbstractTableModel.__init__(model)
+        model.rows = [FileRow(current_filename="livro", file_extension=".pdf")]
+        return model
+
+    def test_selected_col_is_checkable(self):
+        """COL_SELECTED deve ter flag UserCheckable."""
+        model = self._make_model()
+        idx = model.index(0, COL_SELECTED)
+        assert Qt.ItemFlag.ItemIsUserCheckable in model.flags(idx)
+
+    def test_selected_col_not_editable(self):
+        """COL_SELECTED não deve ter flag ItemIsEditable."""
+        model = self._make_model()
+        idx = model.index(0, COL_SELECTED)
+        assert not (model.flags(idx) & Qt.ItemFlag.ItemIsEditable)
+
+    def test_default_unchecked(self):
+        """Linha recém-criada deve estar desmarcada (Unchecked)."""
+        model = self._make_model()
+        idx = model.index(0, COL_SELECTED)
+        state = model.data(idx, Qt.ItemDataRole.CheckStateRole)
+        assert state == Qt.CheckState.Unchecked
+
+    def test_setdata_checks_row(self):
+        """setData com Checked deve marcar selected=True."""
+        model = self._make_model()
+        idx = model.index(0, COL_SELECTED)
+        result = model.setData(idx, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+        assert result is True
+        assert model.rows[0].selected is True
+
+    def test_setdata_unchecks_row(self):
+        """setData com Unchecked deve marcar selected=False."""
+        model = self._make_model()
+        model.rows[0].selected = True
+        idx = model.index(0, COL_SELECTED)
+        model.setData(idx, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+        assert model.rows[0].selected is False
+
+    def test_checked_state_reflected_in_data(self):
+        """Após marcar selected=True, data() deve retornar Checked."""
+        model = self._make_model()
+        model.rows[0].selected = True
+        idx = model.index(0, COL_SELECTED)
+        assert model.data(idx, Qt.ItemDataRole.CheckStateRole) == Qt.CheckState.Checked
+
+    def test_get_changes_respects_selection(self):
+        """get_changes deve incluir apenas linhas marcadas."""
+        model = DualBandTableModel.__new__(DualBandTableModel)
+        QAbstractTableModel.__init__(model)
+        model.rows = [
+            FileRow(current_filename="livro_a", file_extension=".pdf",
+                    new_filename="novo_a", selected=True, original_path="/dir/livro_a.pdf"),
+            FileRow(current_filename="livro_b", file_extension=".pdf",
+                    new_filename="novo_b", selected=False, original_path="/dir/livro_b.pdf"),
+        ]
+        changes = model.get_changes()
+        assert len(changes) == 1
+        assert changes[0][1] == "novo_a.pdf"

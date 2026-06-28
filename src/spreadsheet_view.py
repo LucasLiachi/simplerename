@@ -25,9 +25,10 @@ class GroupedHeaderView(QHeaderView):
 
     GROUP_HEIGHT = 20
     GROUPS = [
-        ("Estado Atual",        list(range(0, 8))),
-        ("Proposta de Mudanca", list(range(8, 15))),
-        ("",                    [15]),
+        ("",                    [0]),              # col 0: checkbox
+        ("Estado Atual",        list(range(1, 8))), # cols 1-7
+        ("Proposta de Mudança", list(range(8, 16))), # cols 8-15 (inclui catálogo)
+        ("",                    [16]),             # col 16: preview
     ]
 
     def __init__(self, parent=None):
@@ -115,7 +116,7 @@ class SpreadsheetView(DraggableTableView):
     def setup_appearance(self) -> None:
         """Configure column widths and visual options."""
         self.horizontalHeader().setStretchLastSection(False)
-        self.setColumnWidth(0, 40)    # qualidade
+        self.setColumnWidth(0, 30)    # checkbox seleção
         self.setColumnWidth(1, 180)   # nome atual
         self.setColumnWidth(2, 60)    # formato
         self.setColumnWidth(3, 160)   # titulo atual
@@ -130,7 +131,8 @@ class SpreadsheetView(DraggableTableView):
         self.setColumnWidth(12, 130)  # nova editora
         self.setColumnWidth(13, 120)  # novo isbn
         self.setColumnWidth(14, 200)  # classificacao
-        self.setColumnWidth(15, 200)  # preview
+        self.setColumnWidth(15, 260)  # catalogo ABNT
+        self.setColumnWidth(16, 200)  # preview
 
         self.setSortingEnabled(True)
         self.setAlternatingRowColors(False)  # cores gerenciadas pelo model
@@ -150,14 +152,15 @@ class SpreadsheetView(DraggableTableView):
                 })
         self.model.load_files(files)
 
-        # Disparar extracao em background para PDFs
-        pdf_files = [
+        # Disparar extração em background para PDF, EPUB, MOBI e outros formatos suportados
+        _SUPPORTED_EXTS = {'.pdf', '.epub', '.mobi', '.fb2', '.cbz', '.xps'}
+        extractable = [
             (row, f['path'])
             for row, f in enumerate(files)
-            if f.get('extension', '').lower() == '.pdf'
+            if f.get('extension', '').lower() in _SUPPORTED_EXTS
         ]
-        if pdf_files:
-            self._start_metadata_extraction(pdf_files)
+        if extractable:
+            self._start_metadata_extraction(extractable)
 
     def _start_metadata_extraction(self, pdf_files: list) -> None:
         """Inicia extracao de metadados em thread background.
