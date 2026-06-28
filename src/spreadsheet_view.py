@@ -25,10 +25,10 @@ class GroupedHeaderView(QHeaderView):
 
     GROUP_HEIGHT = 20
     GROUPS = [
-        ("",                    [0]),              # col 0: checkbox
-        ("Estado Atual",        list(range(1, 8))), # cols 1-7
-        ("Proposta de Mudança", list(range(8, 16))), # cols 8-15 (inclui catálogo)
-        ("",                    [16]),             # col 16: preview
+        ("",               [0]),               # col 0: checkbox
+        ("Estado Atual",   list(range(1, 8))), # cols 1-7
+        ("Proposta",       list(range(8, 16))), # cols 8-15 (inclui catálogo)
+        ("",               [16]),              # col 16: preview
     ]
 
     def __init__(self, parent=None):
@@ -41,14 +41,14 @@ class GroupedHeaderView(QHeaderView):
         painter.save()
         is_dark = self.palette().color(QPalette.ColorRole.Window).lightness() < 128
         GROUP_BG = {
-            "Estado Atual":        QColor(25, 55, 100)  if is_dark else QColor(181, 212, 244),
-            "Proposta de Mudanca": QColor(20, 65, 30)   if is_dark else QColor(159, 225, 203),
-            "":                    QColor(60, 60, 60)   if is_dark else QColor(220, 220, 220),
+            "Estado Atual": QColor(25, 55, 100)  if is_dark else QColor(181, 212, 244),
+            "Proposta":     QColor(20, 65, 30)   if is_dark else QColor(159, 225, 203),
+            "":             QColor(60, 60, 60)   if is_dark else QColor(220, 220, 220),
         }
         GROUP_FG = {
-            "Estado Atual":        QColor(180, 210, 255) if is_dark else QColor(12, 68, 124),
-            "Proposta de Mudanca": QColor(160, 230, 180) if is_dark else QColor(8, 80, 65),
-            "":                    QColor(200, 200, 200) if is_dark else QColor(80, 80, 80),
+            "Estado Atual": QColor(180, 210, 255) if is_dark else QColor(12, 68, 124),
+            "Proposta":     QColor(160, 230, 180) if is_dark else QColor(8, 80, 65),
+            "":             QColor(200, 200, 200) if is_dark else QColor(80, 80, 80),
         }
         # Linha inferior: nome da coluna (comportamento padrao)
         col_rect = QRect(rect.x(), rect.y() + self.GROUP_HEIGHT,
