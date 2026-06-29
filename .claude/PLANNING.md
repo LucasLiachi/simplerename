@@ -65,9 +65,6 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-018 — Pasta de Saída Configurável** `v1.4.0`
   `ConfigManager.get_setting`/`set_setting` adicionados para persistência de chave-valor em `_app_settings` no JSON. `MainWindow` carrega `output_dir` na inicialização; botão "Pasta de Saída…" na toolbar abre `QFileDialog` e persiste a escolha. `_apply_with_folders` usa `_output_dir or current_directory`; tooltip do botão "Aplicar com Pastas" reflete o destino atual. Botão "Aplicar com Pastas" reconectado (era dead code desde FEATURE-012).
 
-- ✅ **FEATURE-019 — Code Signing do Instalador** `v1.4.0`
-  Etapa `Sign executables` adicionada ao `build-release.yml` após o NSIS e antes do upload. Usa `signtool.exe` (Windows SDK, disponível em `windows-latest`) via PowerShell com `try/finally` para garantir remoção do PFX. Execução condicional: se `CODE_SIGN_CERTIFICATE` não estiver configurado como secret do repositório, a etapa é ignorada sem falhar. **Pré-requisito externo:** adquirir certificado EV (~$200/ano em DigiCert/Sectigo/GlobalSign) e configurar os secrets `CODE_SIGN_CERTIFICATE` (PFX em base64) e `CODE_SIGN_PASSWORD` em Settings → Secrets → Actions.
-
 - ✅ **FEATURE-020 — Auto-update** `v1.5.0`
   `update_checker.py`: `parse_version`, `fetch_latest_release` (urllib stdlib), `check_for_update` (pura, testável) e `UpdateWorker(QThread)`. `GITHUB_REPO` adicionado a `version.py`. `MainWindow._start_update_check()` inicia o worker no final do `__init__`; `_on_update_available` exibe `QMessageBox.question` e abre `QDesktopServices.openUrl` se confirmado. Falha silenciosa: erros de rede são logados em DEBUG e não interrompem a UI. 23 testes sem acesso à internet.
 
@@ -78,6 +75,11 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
   `ocr_extractor.py`: `render_page_as_image` (PyMuPDF → PIL, dpi=150), `extract_cover_text` (pytesseract + fallback `eng` se `por` ausente, silencioso em qualquer falha), `parse_ocr_title_author` (agrupa linhas em blocos, filtra ruído — ISBN/URL/números, primeiro bloco = título, segundo = autor). Strategy 6 `_strategy_ocr` adicionada ao `SearchPipeline.run()` como último recurso, ativada apenas em PDFs. `pytesseract==0.3.10` e `Pillow==10.4.0` adicionados ao `requirements.txt`. Detecção automática do binário Tesseract em `C:\Program Files\Tesseract-OCR\tesseract.exe` como fallback ao PATH. 24 testes sem rede/Tesseract real (mocks de pytesseract, fitz e render_page_as_image). **Pré-requisito de runtime:** instalar Tesseract OCR em https://github.com/UB-Mannheim/tesseract/wiki
 
 ### Pendentes — Q4 2026
+
+### Descontinuados — Q4 2026
+
+- ~~**FEATURE-019 — Code Signing do Instalador**~~
+  Descontinuado por custo (~$200/ano por certificado EV). A etapa de assinatura foi removida do `build-release.yml`. Pode ser retomado futuramente se o projeto demandar distribuição comercial.
 
 ---
 
