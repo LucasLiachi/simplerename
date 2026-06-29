@@ -71,10 +71,10 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-020 — Auto-update** `v1.5.0`
   `update_checker.py`: `parse_version`, `fetch_latest_release` (urllib stdlib), `check_for_update` (pura, testável) e `UpdateWorker(QThread)`. `GITHUB_REPO` adicionado a `version.py`. `MainWindow._start_update_check()` inicia o worker no final do `__init__`; `_on_update_available` exibe `QMessageBox.question` e abre `QDesktopServices.openUrl` se confirmado. Falha silenciosa: erros de rede são logados em DEBUG e não interrompem a UI. 23 testes sem acesso à internet.
 
-### Pendentes — Q4 2026
-
 - ✅ **FEATURE-021 — Parser Customizável** `v1.5.0`
   `filename_pattern.py`: `compile_user_pattern` converte templates com `{TITULO}`, `{AUTOR}`, `{ANO}`, `{ISBN}` em regex com named groups; `validate_template` retorna mensagem de erro imediata. `_parse_filename` em `search_pipeline.py` aceita `extra_patterns` (prioridade sobre embutidos); `SearchPipeline.__init__` recebe e armazena esses padrões. `MainWindow` carrega padrões salvos via `ConfigManager` ao criar o pipeline e expõe botão "Padrões…" na toolbar que abre dialog com lista gerenciável (Adicionar/Remover), validação inline e reset do pipeline ao salvar. 33 testes cobrem compilação, correspondência com nomes reais, validação e integração.
+
+### Pendentes — Q4 2026
 
 - ⏳ **FEATURE-022 — Busca por OCR** `P4`
   Usar Tesseract para extrair texto da capa do PDF e inferir título/autor quando não há metadados embutidos e o nome do arquivo não tem padrão reconhecível. Alta complexidade.
