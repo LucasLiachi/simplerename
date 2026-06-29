@@ -66,10 +66,16 @@ jobs:
         run: |
           & "C:\Program Files (x86)\NSIS\makensis.exe" /DVERSION=${{ steps.version.outputs.VERSION }} installer.nsi
 
+      - name: Empacotar executável em ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\SimpleRename.exe `
+            -DestinationPath SimpleRename-${{ steps.version.outputs.VERSION }}.zip
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.3.2
         with:
           name: "Simple Rename v${{ steps.version.outputs.VERSION }}"
           files: |
-            dist/SimpleRename.exe
+            SimpleRename-${{ steps.version.outputs.VERSION }}.zip
             SimpleRename-Setup-${{ steps.version.outputs.VERSION }}.exe
