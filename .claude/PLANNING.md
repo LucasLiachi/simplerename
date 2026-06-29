@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 337 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 361 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -74,10 +74,10 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-021 — Parser Customizável** `v1.5.0`
   `filename_pattern.py`: `compile_user_pattern` converte templates com `{TITULO}`, `{AUTOR}`, `{ANO}`, `{ISBN}` em regex com named groups; `validate_template` retorna mensagem de erro imediata. `_parse_filename` em `search_pipeline.py` aceita `extra_patterns` (prioridade sobre embutidos); `SearchPipeline.__init__` recebe e armazena esses padrões. `MainWindow` carrega padrões salvos via `ConfigManager` ao criar o pipeline e expõe botão "Padrões…" na toolbar que abre dialog com lista gerenciável (Adicionar/Remover), validação inline e reset do pipeline ao salvar. 33 testes cobrem compilação, correspondência com nomes reais, validação e integração.
 
-### Pendentes — Q4 2026
+- ✅ **FEATURE-022 — Busca por OCR** `v1.5.0`
+  `ocr_extractor.py`: `render_page_as_image` (PyMuPDF → PIL, dpi=150), `extract_cover_text` (pytesseract + fallback `eng` se `por` ausente, silencioso em qualquer falha), `parse_ocr_title_author` (agrupa linhas em blocos, filtra ruído — ISBN/URL/números, primeiro bloco = título, segundo = autor). Strategy 6 `_strategy_ocr` adicionada ao `SearchPipeline.run()` como último recurso, ativada apenas em PDFs. `pytesseract==0.3.10` e `Pillow==10.4.0` adicionados ao `requirements.txt`. Detecção automática do binário Tesseract em `C:\Program Files\Tesseract-OCR\tesseract.exe` como fallback ao PATH. 24 testes sem rede/Tesseract real (mocks de pytesseract, fitz e render_page_as_image). **Pré-requisito de runtime:** instalar Tesseract OCR em https://github.com/UB-Mannheim/tesseract/wiki
 
-- ⏳ **FEATURE-022 — Busca por OCR** `P4`
-  Usar Tesseract para extrair texto da capa do PDF e inferir título/autor quando não há metadados embutidos e o nome do arquivo não tem padrão reconhecível. Alta complexidade.
+### Pendentes — Q4 2026
 
 ---
 

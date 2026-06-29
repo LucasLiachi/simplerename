@@ -208,6 +208,7 @@ class SearchPipeline:
             self._strategy_embedded_title_author,
             self._strategy_filename_title_author,
             self._strategy_title_only,
+            self._strategy_ocr,
         ):
             result = strategy(row)
             if result and result.confidence >= 0.4:
@@ -264,6 +265,27 @@ class SearchPipeline:
         if len(title) < 3:
             return None
         results = self.lookup.lookup(BookMetadata(title=title, author=""))
+        return results[0] if results else None
+
+    def _strategy_ocr(self, row: FileRow) -> Optional[LookupResult]:
+        """
+        Estratégia 6: OCR na capa do PDF para inferir título e autor.
+
+        Acionada como último recurso quando nenhuma outra estratégia retornou
+        resultado com confiança suficiente. Funciona somente em PDFs; retorna
+        None silenciosamente se pytesseract ou Tesseract não estiverem instalados.
+        """
+        if not row.original_path or row.file_extension.lower() != ".pdf":
+            return None
+        from .ocr_extractor import extract_cover_text, parse_ocr_title_author
+        text   = extract_cover_text(row.original_path)
+        parsed = parse_ocr_title_author(text)
+        title  = parsed.get("title", "")
+        if len(title) < 3:
+            return None
+        results = self.lookup.lookup(BookMetadata(
+            title=title, author=parsed.get("author", "")
+        ))
         return results[0] if results else None
 
     def apply_result(self, row: FileRow, result: LookupResult) -> FileRow:
