@@ -6,3 +6,4 @@ typing_extensions==4.11.0
 python-dateutil==2.9.0
 PyMuPDF==1.23.0
 pypdf==3.17.0
+ebooklib==0.18

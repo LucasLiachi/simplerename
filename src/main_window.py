@@ -212,11 +212,11 @@ class MainWindow(QMainWindow):
                 results = self.rename_controller.execute_rename(changes)
                 success_count = sum(1 for msg in results.values() if msg.startswith("Successfully"))
                 self._save_history()
-                # Write-back de metadados PDF para arquivos renomeados com sucesso
-                wb_count = self._apply_pdf_writeback(changes)
+                # Write-back de metadados para arquivos renomeados com sucesso
+                wb_count = self._apply_writeback(changes)
                 msg = f"Renamed {success_count} files"
                 if wb_count:
-                    msg += f" (metadados gravados em {wb_count} PDFs)"
+                    msg += f" (metadados gravados em {wb_count} arquivo(s))"
                 self.statusBar().showMessage(msg)
                 self.spreadsheet_view.load_directory(self.current_directory)
             else:
@@ -225,9 +225,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Error: {str(e)}")
 
-    def _apply_pdf_writeback(self, changes: list) -> int:
+    def _apply_writeback(self, changes: list) -> int:
         """
-        Grava metadados confirmados nos PDFs renomeados.
+        Grava metadados confirmados nos arquivos renomeados (PDF e EPUB).
 
         Args:
             changes: Lista de tuplas (original_path, new_name) usada no rename.
@@ -236,6 +236,7 @@ class MainWindow(QMainWindow):
             Contagem de arquivos com write-back bem-sucedido.
         """
         from .pdf_metadata_writer import write_metadata_to_pdf
+        from .epub_metadata_writer import write_metadata_to_epub
         from .file_manager import DualBandTableModel
         model = self.spreadsheet_view.model
         if not isinstance(model, DualBandTableModel):
@@ -243,10 +244,14 @@ class MainWindow(QMainWindow):
         count = 0
         for original_path, new_name in changes:
             new_path = os.path.join(os.path.dirname(original_path), new_name)
+            ext = new_name.lower()
             for row in model.rows:
                 if row.original_path == original_path:
-                    if new_name.lower().endswith(".pdf"):
+                    if ext.endswith(".pdf"):
                         if write_metadata_to_pdf(new_path, row):
+                            count += 1
+                    elif ext.endswith(".epub"):
+                        if write_metadata_to_epub(new_path, row):
                             count += 1
                     break
         return count
