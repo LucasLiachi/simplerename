@@ -76,6 +76,9 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 
 ### Pendentes — Q4 2026
 
+- ⏳ **FEATURE-023 — Convenção ISBN-Autor-Título e Deduplicação** `P2`
+  Nova convenção de nome `NamingConvention.ISBN_AUTHOR_TITLE` em `cataloging_engine.py`: formato `[ISBN] - [Autor] - [Título].[ext]` (ex: `9788520935905 - Agatha Christie - Os cinco porquinhos.pdf`). Para livros sem ISBN, usa o prefixo `SEM-ISBN` no lugar (`SEM-ISBN - [Autor] - [Título].[ext]`). `CatalogingEngine.apply()` passa a verificar se o arquivo de destino já existe e, em caso positivo, adiciona sufixo numérico incremental `(1)`, `(2)` etc. antes de mover, evitando sobreposição de dados.
+
 ### Descontinuados — Q4 2026
 
 - ~~**FEATURE-019 — Code Signing do Instalador**~~
