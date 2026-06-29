@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.3.2 — 246 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.3.2 — 258 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -53,10 +53,10 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-014 — Backup antes de Write-back** `v1.3.2`
   `_create_backup()` em `pdf_metadata_writer.py` e `epub_metadata_writer.py` cria cópia `.bak` via `shutil.copy2` antes de qualquer gravação. Se o backup falhar, o write-back é abortado e retorna False, preservando o arquivo original.
 
-### Pendentes — Q4 2026
+- ✅ **FEATURE-015 — Filtro de Extensão na Toolbar** `v1.3.2`
+  `compute_hidden_rows()` em `file_manager.py` calcula flags de ocultação por extensão. `MainWindow._apply_extension_filter()` aplica via `setRowHidden()` no QTableView. Grupo de ações exclusivas (Todos/PDF/EPUB/MOBI) adicionado à toolbar; `modelReset` re-aplica o filtro automaticamente após cada `load_directory`.
 
-- ⏳ **FEATURE-015 — Filtro de Extensão na Toolbar** `P3` `DEBT-004`
-  Conectar `FilterSortManager` (já implementado em `main_window.py`) à toolbar. Permite filtrar a planilha por tipo de arquivo (PDF, EPUB, MOBI).
+### Pendentes — Q4 2026
 
 - ⏳ **FEATURE-016 — Painel de Histórico** `P3`
   Painel lateral com lista de operações realizadas, timestamp de cada rename e opção de exportar CSV. Usa dados já gravados pelo `HistoryManager` em `history.json`.

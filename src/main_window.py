@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QFileDialog,
                              QStatusBar, QLabel, QLineEdit, QPushButton,
                              QHBoxLayout, QProgressDialog)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QKeySequence, QShortcut, QAction
+from PyQt6.QtGui import QKeySequence, QShortcut, QAction, QActionGroup
 import os
 from .spreadsheet_view import SpreadsheetView
 from .rename_controller import RenameController
@@ -92,13 +92,19 @@ class MainWindow(QMainWindow):
         # SearchPipeline — inicializado lazy (FEATURE-007)
         self._search_pipeline: object = None
 
-        # Toolbar com 4 ações
+        # Filtro de extensão ativo (None = mostrar tudo)
+        self._active_ext_filter = None
+
+        # Toolbar com 4 ações + filtro de extensão
         self._setup_toolbar()
 
         # Atualiza estado da toolbar sempre que dados mudam
         self.spreadsheet_view.model.dataChanged.connect(
             lambda: self._update_toolbar_state()
         )
+
+        # Re-aplica filtro de extensão após cada recarga da pasta
+        self.spreadsheet_view.model.modelReset.connect(self._apply_extension_filter)
 
         self._update_toolbar_state()
 
@@ -129,11 +135,26 @@ class MainWindow(QMainWindow):
         tb.addAction(self.rename_marked_action)
         tb.addSeparator()
         tb.addAction(self.reload_action)
+        tb.addSeparator()
+
+        tb.addWidget(QLabel("  Filtrar: "))
+        self._filter_group = QActionGroup(self)
+        self._filter_group.setExclusive(True)
+        self._filter_actions: dict = {}
+        for label, ext in [("Todos", None), ("PDF", ".pdf"), ("EPUB", ".epub"), ("MOBI", ".mobi")]:
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setData(ext)
+            self._filter_group.addAction(action)
+            tb.addAction(action)
+            self._filter_actions[label] = action
+        self._filter_actions["Todos"].setChecked(True)
 
         self.browse_action.triggered.connect(self._on_browse)
         self.search_marked_action.triggered.connect(self._on_search_marked)
         self.rename_marked_action.triggered.connect(self._on_rename_marked)
         self.reload_action.triggered.connect(self._on_reload)
+        self._filter_group.triggered.connect(self._on_filter_changed)
 
     def _update_toolbar_state(self) -> None:
         """Habilita/desabilita os 4 botões da toolbar conforme estado do model."""
@@ -179,6 +200,21 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Pasta recarregada")
         else:
             self.statusBar().showMessage("Nenhuma pasta selecionada")
+
+    def _on_filter_changed(self, action: QAction) -> None:
+        """Atualiza o filtro de extensão e re-aplica à planilha."""
+        self._active_ext_filter = action.data()
+        self._apply_extension_filter()
+
+    def _apply_extension_filter(self) -> None:
+        """Oculta/exibe linhas da planilha conforme o filtro de extensão ativo."""
+        from .file_manager import DualBandTableModel, compute_hidden_rows
+        model = self.spreadsheet_view.model
+        if not isinstance(model, DualBandTableModel):
+            return
+        hidden = compute_hidden_rows(model.rows, self._active_ext_filter)
+        for i, hide in enumerate(hidden):
+            self.spreadsheet_view.setRowHidden(i, hide)
 
     def _save_history(self) -> None:
         """Persist the current history to disk."""

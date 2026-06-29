@@ -751,3 +751,18 @@ def rename_files(files: List[str], new_names: List[str], dry_run: bool = False) 
             results[old] = f"Failed to rename: {str(e)}"
 
     return results
+
+
+def compute_hidden_rows(rows: List[FileRow], ext_filter: Optional[str]) -> List[bool]:
+    """Retorna lista de flags de ocultação para filtro de extensão na toolbar.
+
+    Args:
+        rows: Lista de FileRow do DualBandTableModel.
+        ext_filter: Extensão a exibir (ex: '.pdf'), ou None para exibir tudo.
+
+    Returns:
+        Lista de bool onde True = linha deve ser ocultada.
+    """
+    if ext_filter is None:
+        return [False] * len(rows)
+    return [row.file_extension.lower() != ext_filter for row in rows]
