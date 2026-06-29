@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 377 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 377 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -65,18 +65,18 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-018 — Pasta de Saída Configurável** `v1.4.0`
   `ConfigManager.get_setting`/`set_setting` adicionados para persistência de chave-valor em `_app_settings` no JSON. `MainWindow` carrega `output_dir` na inicialização; botão "Pasta de Saída…" na toolbar abre `QFileDialog` e persiste a escolha. `_apply_with_folders` usa `_output_dir or current_directory`; tooltip do botão "Aplicar com Pastas" reflete o destino atual. Botão "Aplicar com Pastas" reconectado (era dead code desde FEATURE-012).
 
-- ✅ **FEATURE-020 — Auto-update** `v1.5.0`
+- ✅ **FEATURE-020 — Auto-update** `v1.4.0`
   `update_checker.py`: `parse_version`, `fetch_latest_release` (urllib stdlib), `check_for_update` (pura, testável) e `UpdateWorker(QThread)`. `GITHUB_REPO` adicionado a `version.py`. `MainWindow._start_update_check()` inicia o worker no final do `__init__`; `_on_update_available` exibe `QMessageBox.question` e abre `QDesktopServices.openUrl` se confirmado. Falha silenciosa: erros de rede são logados em DEBUG e não interrompem a UI. 23 testes sem acesso à internet.
 
-- ✅ **FEATURE-021 — Parser Customizável** `v1.5.0`
+- ✅ **FEATURE-021 — Parser Customizável** `v1.4.0`
   `filename_pattern.py`: `compile_user_pattern` converte templates com `{TITULO}`, `{AUTOR}`, `{ANO}`, `{ISBN}` em regex com named groups; `validate_template` retorna mensagem de erro imediata. `_parse_filename` em `search_pipeline.py` aceita `extra_patterns` (prioridade sobre embutidos); `SearchPipeline.__init__` recebe e armazena esses padrões. `MainWindow` carrega padrões salvos via `ConfigManager` ao criar o pipeline e expõe botão "Padrões…" na toolbar que abre dialog com lista gerenciável (Adicionar/Remover), validação inline e reset do pipeline ao salvar. 33 testes cobrem compilação, correspondência com nomes reais, validação e integração.
 
-- ✅ **FEATURE-022 — Busca por OCR** `v1.5.0`
+- ✅ **FEATURE-022 — Busca por OCR** `v1.4.0`
   `ocr_extractor.py`: `render_page_as_image` (PyMuPDF → PIL, dpi=150), `extract_cover_text` (pytesseract + fallback `eng` se `por` ausente, silencioso em qualquer falha), `parse_ocr_title_author` (agrupa linhas em blocos, filtra ruído — ISBN/URL/números, primeiro bloco = título, segundo = autor). Strategy 6 `_strategy_ocr` adicionada ao `SearchPipeline.run()` como último recurso, ativada apenas em PDFs. `pytesseract==0.3.10` e `Pillow==10.4.0` adicionados ao `requirements.txt`. Detecção automática do binário Tesseract em `C:\Program Files\Tesseract-OCR\tesseract.exe` como fallback ao PATH. 24 testes sem rede/Tesseract real (mocks de pytesseract, fitz e render_page_as_image). **Pré-requisito de runtime:** instalar Tesseract OCR em https://github.com/UB-Mannheim/tesseract/wiki
 
 ### Pendentes — Q4 2026
 
-- ✅ **FEATURE-023 — Convenção ISBN-Autor-Título e Deduplicação** `v1.5.0`
+- ✅ **FEATURE-023 — Convenção ISBN-Autor-Título e Deduplicação** `v1.4.0`
   `NamingConvention.ISBN_AUTHOR_TITLE` adicionada a `cataloging_engine.py`: gera `[ISBN] - [Autor] - [Título].[ext]` (ex: `9788520935905 - Agatha Christie - Os cinco porquinhos.pdf`); sem ISBN usa prefixo `SEM-ISBN`; sem autor usa `Autor Desconhecido`. `_resolve_unique_path()` verifica se o destino existe e incrementa sufixo `(1)`, `(2)`... até encontrar nome livre; chamada por `apply()` somente em `dry_run=False`. 21 testes novos cobrem a convenção (formato, prefixos, acentos, separadores), `_resolve_unique_path` (sem conflito, (1), (2), N) e deduplicação em `apply()` (com/sem conflito, dry_run).
 
 ### Descontinuados — Q4 2026
@@ -100,6 +100,7 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 | v1.2.0 | Release estável — 210 testes, pipeline CI/CD validado |
 | v1.3.0 | FEATURE-012 — checkbox, catálogo ABNT, EPUB/MOBI, toolbar simplificada |
 | v1.3.1 | Fix: KeyError no header que impedia o app de abrir |
+| v1.4.0 | FEATURE-013 a 018, 020 a 023 — write-back EPUB, backup, filtro, histórico, editora em /Subject, pasta de saída, auto-update, parser customizável, OCR, convenção ISBN-Autor-Título |
 
 > Lições de build e erros conhecidos de CI: agente `build-engineer` (ADR-003).
 
