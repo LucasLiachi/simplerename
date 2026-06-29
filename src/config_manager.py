@@ -128,6 +128,31 @@ class ConfigManager:
         except Exception as e:
             raise RuntimeError(f"Failed to import rename list: {str(e)}")
             
+    def get_setting(self, key: str, default=None):
+        """Lê uma configuração persistente de chave simples.
+
+        Args:
+            key: Nome da configuração.
+            default: Valor retornado quando a chave não existe.
+
+        Returns:
+            Valor armazenado ou default.
+        """
+        data = self.load_all_configs()
+        return data.get("_app_settings", {}).get(key, default)
+
+    def set_setting(self, key: str, value) -> None:
+        """Grava uma configuração persistente de chave simples.
+
+        Args:
+            key: Nome da configuração.
+            value: Valor a armazenar (deve ser serializável em JSON).
+        """
+        data = self.load_all_configs()
+        data.setdefault("_app_settings", {})[key] = value
+        with open(self.config_file, "w") as f:
+            json.dump(data, f, indent=2)
+
     def get_troubleshooting_info(self, error_key: str) -> Dict[str, str]:
         """Get troubleshooting information for common errors"""
         TROUBLESHOOT_GUIDE = {

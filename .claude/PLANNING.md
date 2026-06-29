@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 272 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 281 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -62,10 +62,10 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-017 — Editora em `/Subject`** `v1.4.0`
   `pdf_metadata_writer.py`: `meta["producer"]` substituído por `meta["subject"]` para o campo `new_publisher`. Um teste verifica que `/Subject` é gravado e `/Producer` não aparece no dict de metadados.
 
-### Pendentes — Q4 2026
+- ✅ **FEATURE-018 — Pasta de Saída Configurável** `v1.4.0`
+  `ConfigManager.get_setting`/`set_setting` adicionados para persistência de chave-valor em `_app_settings` no JSON. `MainWindow` carrega `output_dir` na inicialização; botão "Pasta de Saída…" na toolbar abre `QFileDialog` e persiste a escolha. `_apply_with_folders` usa `_output_dir or current_directory`; tooltip do botão "Aplicar com Pastas" reflete o destino atual. Botão "Aplicar com Pastas" reconectado (era dead code desde FEATURE-012).
 
-- ⏳ **FEATURE-018 — Pasta de Saída Configurável** `P3`
-  Permitir que o usuário defina uma pasta de saída separada para "Aplicar com Pastas". Hoje as subpastas CDD são criadas dentro da própria pasta selecionada.
+### Pendentes — Q4 2026
 
 - ⏳ **FEATURE-019 — Code Signing do Instalador** `P3`
   Assinar o `SimpleRename-Setup-X.Y.Z.exe` com certificado EV para eliminar o alerta de antivírus do Windows SmartScreen. Requer certificado pago (~$200/ano).

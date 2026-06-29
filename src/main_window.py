@@ -95,7 +95,12 @@ class MainWindow(QMainWindow):
         # Filtro de extensão ativo (None = mostrar tudo)
         self._active_ext_filter = None
 
-        # Toolbar com 4 ações + filtro de extensão + toggle de histórico
+        # Configurações persistentes e pasta de saída para catalogação CDD
+        from .config_manager import ConfigManager
+        self._config = ConfigManager()
+        self._output_dir: str = self._config.get_setting("output_dir", "") or ""
+
+        # Toolbar com ações principais + filtro + histórico
         self._setup_toolbar()
 
         # Painel de histórico (QDockWidget, inicialmente oculto)
@@ -117,7 +122,7 @@ class MainWindow(QMainWindow):
         self._update_toolbar_state()
 
     def _setup_toolbar(self) -> None:
-        """Cria toolbar com 4 ações: Abrir Pasta, Buscar Marcados, Renomear Marcados, Recarregar."""
+        """Cria toolbar: Abrir Pasta, Buscar, Renomear, Recarregar, Aplicar com Pastas, filtro, histórico."""
         tb = self.addToolBar("Principal")
         tb.setMovable(False)
 
@@ -136,6 +141,12 @@ class MainWindow(QMainWindow):
         self.reload_action.setToolTip("Recarregar a pasta atual do disco")
         self.reload_action.setEnabled(False)
 
+        self.apply_folders_action = QAction("Aplicar com Pastas", self)
+        self.apply_folders_action.setEnabled(False)
+
+        self.set_output_dir_action = QAction("Pasta de Saída…", self)
+        self.set_output_dir_action.setToolTip("Definir pasta de destino para a organização CDD")
+
         tb.addAction(self.browse_action)
         tb.addSeparator()
         tb.addAction(self.search_marked_action)
@@ -143,6 +154,9 @@ class MainWindow(QMainWindow):
         tb.addAction(self.rename_marked_action)
         tb.addSeparator()
         tb.addAction(self.reload_action)
+        tb.addSeparator()
+        tb.addAction(self.apply_folders_action)
+        tb.addAction(self.set_output_dir_action)
         tb.addSeparator()
 
         tb.addWidget(QLabel("  Filtrar: "))
@@ -168,6 +182,8 @@ class MainWindow(QMainWindow):
         self.search_marked_action.triggered.connect(self._on_search_marked)
         self.rename_marked_action.triggered.connect(self._on_rename_marked)
         self.reload_action.triggered.connect(self._on_reload)
+        self.apply_folders_action.triggered.connect(self._apply_with_folders)
+        self.set_output_dir_action.triggered.connect(self._on_set_output_dir)
         self._filter_group.triggered.connect(self._on_filter_changed)
         self.history_action.triggered.connect(self._on_toggle_history)
 
@@ -183,6 +199,8 @@ class MainWindow(QMainWindow):
         self.search_marked_action.setEnabled(has_marked)
         self.rename_marked_action.setEnabled(has_marked_with_proposal)
         self.reload_action.setEnabled(bool(self.current_directory))
+        self.apply_folders_action.setEnabled(bool(self.current_directory))
+        self._update_output_dir_ui()
 
     # ---------------------------------------------------------------------------
     # Handlers da toolbar
@@ -215,6 +233,25 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Pasta recarregada")
         else:
             self.statusBar().showMessage("Nenhuma pasta selecionada")
+
+    def _on_set_output_dir(self) -> None:
+        """Abre seletor de pasta para definir o destino da organização CDD."""
+        path = QFileDialog.getExistingDirectory(
+            self, "Pasta de Saída para Organização CDD",
+            self._output_dir or self.current_directory or "",
+        )
+        if path:
+            self._output_dir = path
+            self._config.set_setting("output_dir", path)
+            self._update_output_dir_ui()
+            self.statusBar().showMessage(f"Pasta de saída: {path}")
+
+    def _update_output_dir_ui(self) -> None:
+        """Atualiza tooltip de 'Aplicar com Pastas' para refletir a pasta de saída atual."""
+        dest = self._output_dir or "mesma pasta de entrada"
+        self.apply_folders_action.setToolTip(
+            f"Organizar arquivos em subpastas CDD\nDestino: {dest}"
+        )
 
     def _on_toggle_history(self, checked: bool) -> None:
         """Mostra ou oculta o painel de histórico de renomes."""
@@ -532,13 +569,15 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Busca concluida")
 
     def _apply_with_folders(self) -> None:
-        """Gera sugestoes CDD e aplica com confirmacao do usuario."""
+        """Gera sugestoes CDD e aplica na pasta de saída configurada (ou pasta atual)."""
         from .cataloging_engine import CatalogingEngine, NamingConvention
         from PyQt6.QtWidgets import QMessageBox
 
         if not self.current_directory:
             self.statusBar().showMessage("Nenhum diretorio selecionado")
             return
+
+        output_dir = self._output_dir or self.current_directory
 
         engine = CatalogingEngine(convention=NamingConvention.ABNT)
         items  = self._get_cataloging_items()
@@ -547,7 +586,7 @@ class MainWindow(QMainWindow):
             return
 
         suggestions = engine.suggest_batch(items)
-        preview     = engine.preview_tree(suggestions, self.current_directory)
+        preview     = engine.preview_tree(suggestions, output_dir)
 
         reply = QMessageBox.question(
             self, "Confirmar organizacao",
@@ -555,7 +594,7 @@ class MainWindow(QMainWindow):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            results = engine.apply(suggestions, self.current_directory, dry_run=False)
+            results = engine.apply(suggestions, output_dir, dry_run=False)
             success = sum(1 for r in results if r.success)
             self.statusBar().showMessage(f"Organizado: {success}/{len(results)} arquivos")
             self.spreadsheet_view.load_directory(self.current_directory)
