@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 377 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.1 — 377 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -101,6 +101,7 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 | v1.3.0 | FEATURE-012 — checkbox, catálogo ABNT, EPUB/MOBI, toolbar simplificada |
 | v1.3.1 | Fix: KeyError no header que impedia o app de abrir |
 | v1.4.0 | FEATURE-013 a 018, 020 a 023 — write-back EPUB, backup, filtro, histórico, editora em /Subject, pasta de saída, auto-update, parser customizável, OCR, convenção ISBN-Autor-Título |
+| v1.4.1 | Fix: adiciona ZIP do executável no release — download passa livre pelo browser, usuário decide na execução via SmartScreen |
 
 > Lições de build e erros conhecidos de CI: agente `build-engineer` (ADR-003).
 
