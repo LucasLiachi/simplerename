@@ -95,8 +95,16 @@ class MainWindow(QMainWindow):
         # Filtro de extensão ativo (None = mostrar tudo)
         self._active_ext_filter = None
 
-        # Toolbar com 4 ações + filtro de extensão
+        # Toolbar com 4 ações + filtro de extensão + toggle de histórico
         self._setup_toolbar()
+
+        # Painel de histórico (QDockWidget, inicialmente oculto)
+        from .history_panel import HistoryPanel
+        self._history_panel = HistoryPanel(self)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._history_panel)
+        self._history_panel.connect_manager(self.history_manager)
+        self._history_panel.hide()
+        self._history_panel.visibilityChanged.connect(self.history_action.setChecked)
 
         # Atualiza estado da toolbar sempre que dados mudam
         self.spreadsheet_view.model.dataChanged.connect(
@@ -150,11 +158,18 @@ class MainWindow(QMainWindow):
             self._filter_actions[label] = action
         self._filter_actions["Todos"].setChecked(True)
 
+        tb.addSeparator()
+        self.history_action = QAction("Histórico ▶", self)
+        self.history_action.setToolTip("Mostrar/ocultar painel de histórico de renomes")
+        self.history_action.setCheckable(True)
+        tb.addAction(self.history_action)
+
         self.browse_action.triggered.connect(self._on_browse)
         self.search_marked_action.triggered.connect(self._on_search_marked)
         self.rename_marked_action.triggered.connect(self._on_rename_marked)
         self.reload_action.triggered.connect(self._on_reload)
         self._filter_group.triggered.connect(self._on_filter_changed)
+        self.history_action.triggered.connect(self._on_toggle_history)
 
     def _update_toolbar_state(self) -> None:
         """Habilita/desabilita os 4 botões da toolbar conforme estado do model."""
@@ -200,6 +215,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Pasta recarregada")
         else:
             self.statusBar().showMessage("Nenhuma pasta selecionada")
+
+    def _on_toggle_history(self, checked: bool) -> None:
+        """Mostra ou oculta o painel de histórico de renomes."""
+        self._history_panel.setVisible(checked)
 
     def _on_filter_changed(self, action: QAction) -> None:
         """Atualiza o filtro de extensão e re-aplica à planilha."""

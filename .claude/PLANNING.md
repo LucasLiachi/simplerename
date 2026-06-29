@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.3.2 — 258 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 271 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -56,10 +56,10 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-015 — Filtro de Extensão na Toolbar** `v1.3.2`
   `compute_hidden_rows()` em `file_manager.py` calcula flags de ocultação por extensão. `MainWindow._apply_extension_filter()` aplica via `setRowHidden()` no QTableView. Grupo de ações exclusivas (Todos/PDF/EPUB/MOBI) adicionado à toolbar; `modelReset` re-aplica o filtro automaticamente após cada `load_directory`.
 
-### Pendentes — Q4 2026
+- ✅ **FEATURE-016 — Painel de Histórico** `v1.4.0`
+  `history_panel.py`: `HistoryPanel(QDockWidget)` exibe todas as operações do `HistoryManager` com timestamp, nome original, novo nome, pasta e status. Botões "Exportar CSV" (utf-8-sig para Excel) e "Limpar". `export_history_to_csv()` é função pura testável sem Qt. Botão "Histórico ▶" na toolbar toggle o dock; `visibilityChanged` mantém o botão sincronizado.
 
-- ⏳ **FEATURE-016 — Painel de Histórico** `P3`
-  Painel lateral com lista de operações realizadas, timestamp de cada rename e opção de exportar CSV. Usa dados já gravados pelo `HistoryManager` em `history.json`.
+### Pendentes — Q4 2026
 
 - ⏳ **FEATURE-017 — Editora em `/Subject`** `P3`
   Gravar o campo editora em `/Subject` do PDF em vez de `/Producer`. Mais semântico e compatível com leitores que exibem `/Subject` como metadado de assunto.
