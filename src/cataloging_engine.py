@@ -99,11 +99,12 @@ def _last_first(full_name: str) -> str:
 class NamingConvention(Enum):
     """Convencoes de nomenclatura suportadas para nomes de arquivo."""
 
-    ABNT    = "abnt"
-    CHICAGO = "chicago"
-    COMPACT = "compact"
-    ISBN    = "isbn"
-    CUSTOM  = "custom"
+    ABNT             = "abnt"
+    CHICAGO          = "chicago"
+    COMPACT          = "compact"
+    ISBN             = "isbn"
+    ISBN_AUTHOR_TITLE = "isbn_author_title"
+    CUSTOM           = "custom"
 
 
 def _apply_convention(meta: BookMetadata, convention: NamingConvention,
@@ -152,6 +153,11 @@ def _apply_convention(meta: BookMetadata, convention: NamingConvention,
             return _slugify(f"{isbn}-{title}", max_len=200)
         return _slugify(title, max_len=200)
 
+    elif convention == NamingConvention.ISBN_AUTHOR_TITLE:
+        prefix     = isbn if isbn else "SEM-ISBN"
+        author_fmt = _slugify(author) if author else "Autor Desconhecido"
+        return _slugify(f"{prefix} - {author_fmt} - {title}", max_len=200)
+
     elif convention == NamingConvention.CUSTOM:
         template = custom_template or "{AUTHOR} - {TITLE} ({YEAR})"
         result = (template
@@ -164,6 +170,29 @@ def _apply_convention(meta: BookMetadata, convention: NamingConvention,
         return _slugify(result, max_len=200)
 
     return _slugify(title)
+
+
+def _resolve_unique_path(dest: Path) -> Path:
+    """
+    Retorna dest se não existir; caso contrário, tenta dest (1), dest (2)...
+
+    Args:
+        dest: Caminho de destino desejado.
+
+    Returns:
+        Primeiro caminho disponível sem sobrescrever arquivos existentes.
+    """
+    if not dest.exists():
+        return dest
+    stem   = dest.stem
+    suffix = dest.suffix
+    parent = dest.parent
+    n = 1
+    while True:
+        candidate = parent / f"{stem} ({n}){suffix}"
+        if not candidate.exists():
+            return candidate
+        n += 1
 
 
 @dataclass
@@ -293,6 +322,7 @@ class CatalogingEngine:
 
             try:
                 dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_path = _resolve_unique_path(dest_path)
                 shutil.move(str(src_path), str(dest_path))
                 results.append(ApplyResult(
                     original_path=str(src_path),

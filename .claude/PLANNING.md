@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 361 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 377 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -76,8 +76,8 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 
 ### Pendentes — Q4 2026
 
-- ⏳ **FEATURE-023 — Convenção ISBN-Autor-Título e Deduplicação** `P2`
-  Nova convenção de nome `NamingConvention.ISBN_AUTHOR_TITLE` em `cataloging_engine.py`: formato `[ISBN] - [Autor] - [Título].[ext]` (ex: `9788520935905 - Agatha Christie - Os cinco porquinhos.pdf`). Para livros sem ISBN, usa o prefixo `SEM-ISBN` no lugar (`SEM-ISBN - [Autor] - [Título].[ext]`). `CatalogingEngine.apply()` passa a verificar se o arquivo de destino já existe e, em caso positivo, adiciona sufixo numérico incremental `(1)`, `(2)` etc. antes de mover, evitando sobreposição de dados.
+- ✅ **FEATURE-023 — Convenção ISBN-Autor-Título e Deduplicação** `v1.5.0`
+  `NamingConvention.ISBN_AUTHOR_TITLE` adicionada a `cataloging_engine.py`: gera `[ISBN] - [Autor] - [Título].[ext]` (ex: `9788520935905 - Agatha Christie - Os cinco porquinhos.pdf`); sem ISBN usa prefixo `SEM-ISBN`; sem autor usa `Autor Desconhecido`. `_resolve_unique_path()` verifica se o destino existe e incrementa sufixo `(1)`, `(2)`... até encontrar nome livre; chamada por `apply()` somente em `dry_run=False`. 21 testes novos cobrem a convenção (formato, prefixos, acentos, separadores), `_resolve_unique_path` (sem conflito, (1), (2), N) e deduplicação em `apply()` (com/sem conflito, dry_run).
 
 ### Descontinuados — Q4 2026
 

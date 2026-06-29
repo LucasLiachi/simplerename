@@ -6,7 +6,7 @@ from src.pdf_metadata_extractor import BookMetadata, MetadataQuality
 from src.cataloging_engine import (
     CatalogingEngine, CatalogingSuggestion, ApplyResult,
     NamingConvention, category_to_cdd, _slugify, _last_first,
-    _apply_convention,
+    _apply_convention, _resolve_unique_path,
 )
 
 
@@ -112,6 +112,102 @@ class TestApplyConvention:
         assert "ORWELL" in result
 
 
+class TestApplyConventionIsbnAuthorTitle:
+    """Testes para NamingConvention.ISBN_AUTHOR_TITLE (FEATURE-023)."""
+
+    def _meta(self, **kwargs) -> BookMetadata:
+        defaults = dict(title="Os cinco porquinhos", author="Agatha Christie",
+                        isbn="9788520935905")
+        defaults.update(kwargs)
+        return BookMetadata(**defaults)
+
+    def test_formato_isbn_autor_titulo(self):
+        result = _apply_convention(self._meta(), NamingConvention.ISBN_AUTHOR_TITLE)
+        assert result == "9788520935905 - Agatha Christie - Os cinco porquinhos"
+
+    def test_sem_isbn_usa_prefixo_sem_isbn(self):
+        meta = self._meta(isbn="")
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert result.startswith("SEM-ISBN - ")
+        assert "Agatha Christie" in result
+        assert "Os cinco porquinhos" in result
+
+    def test_sem_autor_usa_autor_desconhecido(self):
+        meta = self._meta(isbn="", author="")
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert "Autor Desconhecido" in result
+
+    def test_com_isbn_e_sem_autor_usa_isbn_e_autor_desconhecido(self):
+        meta = self._meta(author="")
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert result.startswith("9788520935905 - ")
+        assert "Autor Desconhecido" in result
+
+    def test_acentos_removidos(self):
+        meta = self._meta(author="José Saramago", title="O Evangelho segundo Jesus Cristo")
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert "Jose Saramago" in result
+        assert "Cristo" in result
+
+    def test_separadores_corretos(self):
+        """Deve usar ' - ' como separador entre os três campos."""
+        result = _apply_convention(self._meta(), NamingConvention.ISBN_AUTHOR_TITLE)
+        parts = result.split(" - ")
+        assert len(parts) == 3
+        assert parts[0] == "9788520935905"
+        assert parts[1] == "Agatha Christie"
+
+    def test_titulo_sem_isbn_e_sem_autor(self):
+        meta = BookMetadata(title="Livro Misterioso")
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert "SEM-ISBN" in result
+        assert "Autor Desconhecido" in result
+        assert "Livro Misterioso" in result
+
+    def test_nao_inclui_ano(self):
+        """A convenção ISBN_AUTHOR_TITLE não inclui o ano."""
+        meta = self._meta()
+        meta.year = "1934"
+        result = _apply_convention(meta, NamingConvention.ISBN_AUTHOR_TITLE)
+        assert "1934" not in result
+
+
+class TestResolveUniquePath:
+    """Testes para _resolve_unique_path (FEATURE-023)."""
+
+    def test_retorna_destino_quando_nao_existe(self, tmp_path):
+        dest = tmp_path / "livro.pdf"
+        assert _resolve_unique_path(dest) == dest
+
+    def test_adiciona_sufixo_1_quando_existe(self, tmp_path):
+        dest = tmp_path / "livro.pdf"
+        dest.write_text("existente")
+        result = _resolve_unique_path(dest)
+        assert result == tmp_path / "livro (1).pdf"
+
+    def test_adiciona_sufixo_2_quando_1_tambem_existe(self, tmp_path):
+        dest = tmp_path / "livro.pdf"
+        dest.write_text("existente")
+        (tmp_path / "livro (1).pdf").write_text("existente também")
+        result = _resolve_unique_path(dest)
+        assert result == tmp_path / "livro (2).pdf"
+
+    def test_preserva_extensao(self, tmp_path):
+        dest = tmp_path / "livro.epub"
+        dest.write_text("existente")
+        result = _resolve_unique_path(dest)
+        assert result.suffix == ".epub"
+        assert "(1)" in result.name
+
+    def test_incrementa_ate_livre(self, tmp_path):
+        dest = tmp_path / "livro.pdf"
+        dest.write_text("x")
+        for i in range(1, 5):
+            (tmp_path / f"livro ({i}).pdf").write_text("x")
+        result = _resolve_unique_path(dest)
+        assert result == tmp_path / "livro (5).pdf"
+
+
 class TestCatalogingEngine:
     def _engine(self):
         return CatalogingEngine(convention=NamingConvention.ABNT)
@@ -176,6 +272,72 @@ class TestCatalogingEngine:
         dest = tmp_path / "869 - Literatura" / "ORWELL, George - 1984 (1949).pdf"
         assert dest.exists()
         assert not src.exists()
+
+    # ------------------------------------------------------------------
+    # Deduplicação (FEATURE-023)
+    # ------------------------------------------------------------------
+
+    def test_apply_adiciona_sufixo_quando_destino_existe(self, tmp_path):
+        """Deve gerar nome com (1) quando o arquivo de destino já existe."""
+        engine = CatalogingEngine(convention=NamingConvention.ISBN_AUTHOR_TITLE)
+        src = tmp_path / "livro.pdf"
+        src.write_text("original")
+        dest_dir = tmp_path / "869 - Literatura"
+        dest_dir.mkdir()
+        conflito = dest_dir / "9780451524935 - George Orwell - 1984.pdf"
+        conflito.write_text("existente")
+
+        sug = CatalogingSuggestion(
+            suggested_filename="9780451524935 - George Orwell - 1984.pdf",
+            cdd_code="869", cdd_label="Literatura",
+            folder_path="869 - Literatura",
+            convention="isbn_author_title", confidence=0.9,
+            original_path=str(src),
+        )
+        results = engine.apply([sug], str(tmp_path), dry_run=False)
+
+        assert results[0].success is True
+        destino_final = dest_dir / "9780451524935 - George Orwell - 1984 (1).pdf"
+        assert destino_final.exists()
+        assert conflito.exists()  # original preservado
+
+    def test_apply_sem_conflito_move_sem_sufixo(self, tmp_path):
+        """Sem conflito, o arquivo deve ser movido com o nome original."""
+        engine = CatalogingEngine(convention=NamingConvention.ISBN_AUTHOR_TITLE)
+        src = tmp_path / "livro.pdf"
+        src.write_text("conteudo")
+
+        sug = CatalogingSuggestion(
+            suggested_filename="9780451524935 - George Orwell - 1984.pdf",
+            cdd_code="869", cdd_label="Literatura",
+            folder_path="869 - Literatura",
+            convention="isbn_author_title", confidence=0.9,
+            original_path=str(src),
+        )
+        results = engine.apply([sug], str(tmp_path), dry_run=False)
+
+        dest = tmp_path / "869 - Literatura" / "9780451524935 - George Orwell - 1984.pdf"
+        assert results[0].success is True
+        assert dest.exists()
+        assert "(1)" not in results[0].new_path
+
+    def test_apply_dry_run_nao_resolve_duplicatas(self, tmp_path):
+        """dry_run=True deve retornar o caminho raw mesmo que já exista."""
+        engine = CatalogingEngine(convention=NamingConvention.ISBN_AUTHOR_TITLE)
+        src = tmp_path / "livro.pdf"
+        src.write_text("conteudo")
+
+        sug = CatalogingSuggestion(
+            suggested_filename="9780451524935 - George Orwell - 1984.pdf",
+            cdd_code="869", cdd_label="Literatura",
+            folder_path="869 - Literatura",
+            convention="isbn_author_title", confidence=0.9,
+            original_path=str(src),
+        )
+        results = engine.apply([sug], str(tmp_path), dry_run=True)
+
+        assert results[0].success is True
+        assert "(1)" not in results[0].new_path
 
     def test_preview_tree_format(self):
         engine = self._engine()
