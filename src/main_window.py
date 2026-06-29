@@ -136,6 +136,11 @@ class MainWindow(QMainWindow):
         self.search_marked_action.setToolTip("Buscar metadados online para arquivos marcados (☑)")
         self.search_marked_action.setEnabled(False)
 
+        self.patterns_action = QAction("Padrões…", self)
+        self.patterns_action.setToolTip(
+            "Definir padrões customizados de extração de título/autor do nome do arquivo"
+        )
+
         self.rename_marked_action = QAction("Renomear Marcados ▶", self)
         self.rename_marked_action.setToolTip("Renomear arquivos marcados com a proposta da faixa verde")
         self.rename_marked_action.setEnabled(False)
@@ -153,6 +158,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.browse_action)
         tb.addSeparator()
         tb.addAction(self.search_marked_action)
+        tb.addAction(self.patterns_action)
         tb.addSeparator()
         tb.addAction(self.rename_marked_action)
         tb.addSeparator()
@@ -183,6 +189,7 @@ class MainWindow(QMainWindow):
 
         self.browse_action.triggered.connect(self._on_browse)
         self.search_marked_action.triggered.connect(self._on_search_marked)
+        self.patterns_action.triggered.connect(self._on_edit_patterns)
         self.rename_marked_action.triggered.connect(self._on_rename_marked)
         self.reload_action.triggered.connect(self._on_reload)
         self.apply_folders_action.triggered.connect(self._apply_with_folders)
@@ -212,6 +219,77 @@ class MainWindow(QMainWindow):
     def _on_browse(self) -> None:
         """Abre seletor de pasta."""
         self.open_directory()
+
+    def _on_edit_patterns(self) -> None:
+        """Abre dialog para gerenciar padrões customizados de extração de nome de arquivo."""
+        from PyQt6.QtWidgets import (
+            QDialog, QDialogButtonBox, QHBoxLayout, QInputDialog,
+            QLabel, QListWidget, QPushButton, QVBoxLayout,
+        )
+        from .filename_pattern import PLACEHOLDERS, validate_template
+
+        current: list[str] = list(self._config.get_setting("filename_patterns", []) or [])
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Padrões de Extração do Nome do Arquivo")
+        dlg.setMinimumWidth(520)
+        layout = QVBoxLayout(dlg)
+
+        hint = ", ".join(f"{{{k}}}" for k in PLACEHOLDERS)
+        layout.addWidget(QLabel(
+            f"Marcadores disponíveis: <b>{hint}</b><br>"
+            "Exemplo: <code>{AUTOR} — {TITULO} [{ANO}]</code><br>"
+            "Padrões customizados têm prioridade sobre os embutidos."
+        ))
+
+        lst = QListWidget()
+        lst.addItems(current)
+        layout.addWidget(lst)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("Adicionar…")
+        btn_rm  = QPushButton("Remover")
+        btn_rm.setEnabled(False)
+        btn_row.addWidget(btn_add)
+        btn_row.addWidget(btn_rm)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+
+        lst.currentRowChanged.connect(lambda r: btn_rm.setEnabled(r >= 0))
+
+        def _add():
+            text, ok = QInputDialog.getText(
+                dlg, "Novo padrão", "Digite o padrão:", text="{AUTOR} — {TITULO}"
+            )
+            if not ok or not text.strip():
+                return
+            err = validate_template(text.strip())
+            if err:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(dlg, "Padrão inválido", err)
+                return
+            lst.addItem(text.strip())
+
+        def _remove():
+            row = lst.currentRow()
+            if row >= 0:
+                lst.takeItem(row)
+
+        btn_add.clicked.connect(_add)
+        btn_rm.clicked.connect(_remove)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            new_patterns = [lst.item(i).text() for i in range(lst.count())]
+            self._config.set_setting("filename_patterns", new_patterns)
+            self._search_pipeline = None  # força rebuild com novos padrões
+            self.statusBar().showMessage(f"{len(new_patterns)} padrão(ões) de extração salvos")
 
     def _on_search_marked(self) -> None:
         """Busca metadados via SearchPipeline para todos os arquivos marcados (☑)."""
@@ -462,9 +540,13 @@ class MainWindow(QMainWindow):
             from .search_pipeline import SearchPipeline
             from .metadata_lookup import MetadataLookupService
             from .cataloging_engine import CatalogingEngine, NamingConvention
+            from .filename_pattern import compile_user_pattern
+            raw = self._config.get_setting("filename_patterns", []) or []
+            extra = [p for t in raw if (p := compile_user_pattern(t)) is not None]
             self._search_pipeline = SearchPipeline(
                 MetadataLookupService(),
                 CatalogingEngine(convention=NamingConvention.ABNT),
+                extra_patterns=extra,
             )
         return self._search_pipeline
 

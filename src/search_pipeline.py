@@ -43,17 +43,22 @@ FILENAME_PATTERNS = [
 ]
 
 
-def _parse_filename(stem: str) -> dict:
+def _parse_filename(stem: str,
+                    extra_patterns: list[tuple] | None = None) -> dict:
     """
     Extrai título, autor, ano e ISBN do nome do arquivo (sem extensão).
 
+    Padrões customizados (extra_patterns) têm prioridade sobre os embutidos.
+
     Args:
         stem: Nome do arquivo sem extensão.
+        extra_patterns: Lista opcional de (regex, fields) compilados pelo usuário.
 
     Returns:
         Dict com chaves opcionais: title, author, year, isbn.
     """
-    for pattern, fields in FILENAME_PATTERNS:
+    all_patterns = list(extra_patterns or []) + FILENAME_PATTERNS
+    for pattern, fields in all_patterns:
         m = re.match(pattern, stem.strip(), re.IGNORECASE)
         if m:
             result = {k: v for k, v in m.groupdict().items() if v}
@@ -168,16 +173,20 @@ class SearchPipeline:
     """
 
     def __init__(self, lookup_service: MetadataLookupService,
-                 cataloging_engine: CatalogingEngine) -> None:
+                 cataloging_engine: CatalogingEngine,
+                 extra_patterns: list[tuple] | None = None) -> None:
         """
         Inicializa o pipeline com serviço de lookup e motor de catalogação.
 
         Args:
             lookup_service: Instância de MetadataLookupService.
             cataloging_engine: Instância de CatalogingEngine.
+            extra_patterns: Padrões customizados de (regex, fields) com prioridade
+                sobre os embutidos (FEATURE-021).
         """
-        self.lookup     = lookup_service
-        self.cataloging = cataloging_engine
+        self.lookup          = lookup_service
+        self.cataloging      = cataloging_engine
+        self._extra_patterns = list(extra_patterns or [])
 
     def run(self, row: FileRow) -> Optional[LookupResult]:
         """
@@ -232,7 +241,7 @@ class SearchPipeline:
 
     def _strategy_filename_title_author(self, row: FileRow) -> Optional[LookupResult]:
         """Estratégia 4: Título + Autor inferidos do nome do arquivo."""
-        parsed = _parse_filename(row.current_filename)
+        parsed = _parse_filename(row.current_filename, self._extra_patterns)
         title  = parsed.get("title", "")
         author = parsed.get("author", "")
         if len(title) < 3 or not author:
@@ -250,7 +259,7 @@ class SearchPipeline:
         """
         title = (row.current_title or "").strip()
         if len(title) < 3:
-            parsed = _parse_filename(row.current_filename)
+            parsed = _parse_filename(row.current_filename, self._extra_patterns)
             title  = parsed.get("title", "").strip()
         if len(title) < 3:
             return None
