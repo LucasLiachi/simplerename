@@ -65,7 +65,7 @@ def write_metadata_to_pdf(pdf_path: str, row: "FileRow") -> bool:
         if row.field_confirmed.get("new_year") and row.new_year:
             meta["creationDate"] = f"D:{row.new_year}0101000000"
         if row.field_confirmed.get("new_publisher") and row.new_publisher:
-            meta["producer"] = row.new_publisher
+            meta["subject"] = row.new_publisher
         if row.field_confirmed.get("new_isbn") and row.new_isbn:
             meta["keywords"] = f"ISBN {row.new_isbn}"
 

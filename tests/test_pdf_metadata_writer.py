@@ -227,3 +227,28 @@ class TestWriteMetadataToPdf:
         importlib.reload(src.pdf_metadata_writer)
 
         assert call_order == ["backup", "saveIncr"]
+
+    # ------------------------------------------------------------------
+    # Testes de mapeamento de campos (FEATURE-017)
+    # ------------------------------------------------------------------
+
+    def test_publisher_gravado_em_subject_nao_em_producer(self):
+        """Editora deve ser gravada em /Subject, não em /Producer (FEATURE-017)."""
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.metadata   = {}
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict(sys.modules, {"fitz": mock_fitz}):
+            import importlib
+            import src.pdf_metadata_writer
+            importlib.reload(src.pdf_metadata_writer)
+            from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
+            with patch("shutil.copy2"):
+                write_fn("/fake/path.pdf", self._confirmed_row(publisher="Companhia das Letras"))
+        importlib.reload(src.pdf_metadata_writer)
+
+        call_meta = mock_doc.set_metadata.call_args[0][0]
+        assert call_meta.get("subject") == "Companhia das Letras"
+        assert "producer" not in call_meta
