@@ -1,12 +1,19 @@
 """Testes para src/epub_metadata_writer.py"""
 import builtins
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from src.file_manager import FileRow
 from src.epub_metadata_writer import write_metadata_to_epub
+
+
+@pytest.fixture(autouse=True)
+def _no_real_backup():
+    """Evita chamadas reais a shutil.copy2 em todos os testes deste módulo."""
+    with patch("shutil.copy2"):
+        yield
 
 _DC = "http://purl.org/dc/elements/1.1/"
 
@@ -186,3 +193,47 @@ class TestWriteMetadataToEpub:
         mock_epub_module.read_epub.assert_called_once_with(
             "/fake/livro.epub", options={"ignore_ncx": True}
         )
+
+    # ------------------------------------------------------------------
+    # Testes de backup (FEATURE-014)
+    # ------------------------------------------------------------------
+
+    def test_backup_created_before_write(self):
+        """Deve criar arquivo .epub.bak antes de gravar metadados."""
+        mock_ebooklib, _, _ = _make_epub_mocks()
+
+        with patch.dict(sys.modules, {"ebooklib": mock_ebooklib}):
+            with patch("shutil.copy2") as mock_copy:
+                write_metadata_to_epub("/fake/livro.epub", _confirmed_row())
+
+        mock_copy.assert_called_once_with("/fake/livro.epub", "/fake/livro.epub.bak")
+
+    def test_returns_false_when_backup_fails(self):
+        """Deve retornar False e não gravar quando o backup falha."""
+        mock_ebooklib, mock_epub_module, _ = _make_epub_mocks()
+
+        with patch.dict(sys.modules, {"ebooklib": mock_ebooklib}):
+            with patch("shutil.copy2", side_effect=OSError("sem espaço em disco")):
+                result = write_metadata_to_epub("/fake/livro.epub", _confirmed_row())
+
+        assert result is False
+        mock_epub_module.write_epub.assert_not_called()
+
+    def test_backup_created_before_epub_write(self):
+        """O backup deve ser criado antes de epub.write_epub ser chamado."""
+        mock_ebooklib, mock_epub_module, _ = _make_epub_mocks()
+        call_order: list[str] = []
+
+        def record_backup(*_a):
+            call_order.append("backup")
+
+        def record_write(*_a):
+            call_order.append("write_epub")
+
+        mock_epub_module.write_epub.side_effect = record_write
+
+        with patch.dict(sys.modules, {"ebooklib": mock_ebooklib}):
+            with patch("shutil.copy2", side_effect=record_backup):
+                write_metadata_to_epub("/fake/livro.epub", _confirmed_row())
+
+        assert call_order == ["backup", "write_epub"]

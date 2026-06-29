@@ -2,17 +2,30 @@
 Grava metadados confirmados da faixa verde dentro de arquivos PDF.
 
 Usa PyMuPDF (fitz) para escrita incremental — não recria o PDF.
+Cria backup .pdf.bak antes de qualquer gravação.
 Nunca lança exceção — retorna False em caso de falha.
 """
 from __future__ import annotations
 
 import logging
+import shutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .file_manager import FileRow
 
 logger = logging.getLogger(__name__)
+
+
+def _create_backup(file_path: str) -> bool:
+    """Cria cópia .bak do arquivo antes de gravar metadados."""
+    try:
+        shutil.copy2(file_path, file_path + ".bak")
+        logger.debug(f"Backup criado: {file_path}.bak")
+        return True
+    except Exception as e:
+        logger.warning(f"Falha ao criar backup de {file_path}: {e}")
+        return False
 
 
 def write_metadata_to_pdf(pdf_path: str, row: "FileRow") -> bool:
@@ -30,6 +43,9 @@ def write_metadata_to_pdf(pdf_path: str, row: "FileRow") -> bool:
         import fitz
     except ImportError:
         logger.warning("PyMuPDF nao disponivel — write-back desativado")
+        return False
+
+    if not _create_backup(pdf_path):
         return False
 
     try:

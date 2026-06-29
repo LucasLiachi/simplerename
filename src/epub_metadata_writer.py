@@ -2,11 +2,13 @@
 Grava metadados confirmados da faixa verde dentro de arquivos EPUB.
 
 Usa ebooklib para escrita de metadados Dublin Core (dc:title, dc:creator, dc:identifier).
+Cria backup .epub.bak antes de qualquer gravação.
 Nunca lança exceção — retorna False em caso de falha.
 """
 from __future__ import annotations
 
 import logging
+import shutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,6 +17,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DC = "http://purl.org/dc/elements/1.1/"
+
+
+def _create_backup(file_path: str) -> bool:
+    """Cria cópia .bak do arquivo antes de gravar metadados."""
+    try:
+        shutil.copy2(file_path, file_path + ".bak")
+        logger.debug(f"Backup criado: {file_path}.bak")
+        return True
+    except Exception as e:
+        logger.warning(f"Falha ao criar backup de {file_path}: {e}")
+        return False
 
 
 def write_metadata_to_epub(epub_path: str, row: "FileRow") -> bool:
@@ -35,6 +48,9 @@ def write_metadata_to_epub(epub_path: str, row: "FileRow") -> bool:
         from ebooklib import epub
     except ImportError:
         logger.warning("ebooklib não disponível — write-back EPUB desativado")
+        return False
+
+    if not _create_backup(epub_path):
         return False
 
     try:

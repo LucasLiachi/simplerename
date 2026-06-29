@@ -76,7 +76,8 @@ class TestWriteMetadataToPdf:
             import src.pdf_metadata_writer
             importlib.reload(src.pdf_metadata_writer)
             from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
-            result = write_fn("/fake/path.pdf", self._confirmed_row())
+            with patch("shutil.copy2"):
+                result = write_fn("/fake/path.pdf", self._confirmed_row())
         # Recarregar para restaurar estado
         importlib.reload(src.pdf_metadata_writer)
         assert result is False
@@ -94,7 +95,8 @@ class TestWriteMetadataToPdf:
             import src.pdf_metadata_writer
             importlib.reload(src.pdf_metadata_writer)
             from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
-            result = write_fn("/fake/path.pdf", self._confirmed_row())
+            with patch("shutil.copy2"):
+                result = write_fn("/fake/path.pdf", self._confirmed_row())
         importlib.reload(src.pdf_metadata_writer)
 
         assert result is True
@@ -117,7 +119,8 @@ class TestWriteMetadataToPdf:
             import src.pdf_metadata_writer
             importlib.reload(src.pdf_metadata_writer)
             from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
-            write_fn("/fake/path.pdf", row)
+            with patch("shutil.copy2"):
+                write_fn("/fake/path.pdf", row)
         importlib.reload(src.pdf_metadata_writer)
 
         call_meta = mock_doc.set_metadata.call_args[0][0]
@@ -133,7 +136,8 @@ class TestWriteMetadataToPdf:
             import src.pdf_metadata_writer
             importlib.reload(src.pdf_metadata_writer)
             from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
-            result = write_fn("/fake/path.pdf", self._confirmed_row())
+            with patch("shutil.copy2"):
+                result = write_fn("/fake/path.pdf", self._confirmed_row())
         importlib.reload(src.pdf_metadata_writer)
 
         assert result is False
@@ -151,8 +155,75 @@ class TestWriteMetadataToPdf:
             import src.pdf_metadata_writer
             importlib.reload(src.pdf_metadata_writer)
             from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
-            write_fn("/fake/path.pdf", self._confirmed_row())
+            with patch("shutil.copy2"):
+                write_fn("/fake/path.pdf", self._confirmed_row())
         importlib.reload(src.pdf_metadata_writer)
 
         call_meta = mock_doc.set_metadata.call_args[0][0]
         assert call_meta.get("creationDate", "").startswith("D:1899")
+
+    # ------------------------------------------------------------------
+    # Testes de backup (FEATURE-014)
+    # ------------------------------------------------------------------
+
+    def test_backup_created_before_write(self):
+        """Deve criar arquivo .pdf.bak antes de gravar metadados."""
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.metadata = {}
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict(sys.modules, {"fitz": mock_fitz}):
+            import importlib
+            import src.pdf_metadata_writer
+            importlib.reload(src.pdf_metadata_writer)
+            from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
+            with patch("shutil.copy2") as mock_copy:
+                write_fn("/fake/path.pdf", self._confirmed_row())
+        importlib.reload(src.pdf_metadata_writer)
+
+        mock_copy.assert_called_once_with("/fake/path.pdf", "/fake/path.pdf.bak")
+
+    def test_returns_false_when_backup_fails(self):
+        """Deve retornar False e não gravar quando o backup falha."""
+        mock_doc = MagicMock()
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        with patch.dict(sys.modules, {"fitz": mock_fitz}):
+            import importlib
+            import src.pdf_metadata_writer
+            importlib.reload(src.pdf_metadata_writer)
+            from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
+            with patch("shutil.copy2", side_effect=OSError("sem espaço em disco")):
+                result = write_fn("/fake/path.pdf", self._confirmed_row())
+        importlib.reload(src.pdf_metadata_writer)
+
+        assert result is False
+        mock_fitz.open.assert_not_called()
+
+    def test_backup_created_before_pdf_save(self):
+        """O backup deve ser criado antes de doc.saveIncr() ser chamado."""
+        mock_doc = MagicMock()
+        mock_doc.needs_pass = False
+        mock_doc.metadata = {}
+        mock_fitz = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+        call_order: list[str] = []
+
+        def record_backup(*_a):
+            call_order.append("backup")
+
+        mock_doc.saveIncr.side_effect = lambda: call_order.append("saveIncr")
+
+        with patch.dict(sys.modules, {"fitz": mock_fitz}):
+            import importlib
+            import src.pdf_metadata_writer
+            importlib.reload(src.pdf_metadata_writer)
+            from src.pdf_metadata_writer import write_metadata_to_pdf as write_fn
+            with patch("shutil.copy2", side_effect=record_backup):
+                write_fn("/fake/path.pdf", self._confirmed_row())
+        importlib.reload(src.pdf_metadata_writer)
+
+        assert call_order == ["backup", "saveIncr"]
