@@ -1,7 +1,7 @@
 # SimpleRename — Planning
 
 **Projeto:** aplicação desktop Windows para organização de bibliotecas pessoais de PDFs de livros.
-**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.4.0 — 281 testes passando.
+**Mantenedor:** Lucas Liachi · **Plataforma:** Windows 10/11 · **Estado atual:** v1.5.0 — 304 testes passando.
 
 O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul = estado atual, verde = proposta), e o app extrai metadados automaticamente, consulta bases bibliográficas online (Open Library, Google Books), sugere nomes segundo padrões de biblioteconomia (CDD/ABNT) e aplica renames em lote com undo e write-back de metadados no PDF.
 
@@ -65,13 +65,13 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 - ✅ **FEATURE-018 — Pasta de Saída Configurável** `v1.4.0`
   `ConfigManager.get_setting`/`set_setting` adicionados para persistência de chave-valor em `_app_settings` no JSON. `MainWindow` carrega `output_dir` na inicialização; botão "Pasta de Saída…" na toolbar abre `QFileDialog` e persiste a escolha. `_apply_with_folders` usa `_output_dir or current_directory`; tooltip do botão "Aplicar com Pastas" reflete o destino atual. Botão "Aplicar com Pastas" reconectado (era dead code desde FEATURE-012).
 
-### Pendentes — Q4 2026
-
 - ✅ **FEATURE-019 — Code Signing do Instalador** `v1.4.0`
   Etapa `Sign executables` adicionada ao `build-release.yml` após o NSIS e antes do upload. Usa `signtool.exe` (Windows SDK, disponível em `windows-latest`) via PowerShell com `try/finally` para garantir remoção do PFX. Execução condicional: se `CODE_SIGN_CERTIFICATE` não estiver configurado como secret do repositório, a etapa é ignorada sem falhar. **Pré-requisito externo:** adquirir certificado EV (~$200/ano em DigiCert/Sectigo/GlobalSign) e configurar os secrets `CODE_SIGN_CERTIFICATE` (PFX em base64) e `CODE_SIGN_PASSWORD` em Settings → Secrets → Actions.
 
-- ⏳ **FEATURE-020 — Auto-update** `P3`
-  Verificar ao abrir o app se existe tag mais recente no GitHub e oferecer download. Implementável via `urllib` consultando a GitHub Releases API.
+- ✅ **FEATURE-020 — Auto-update** `v1.5.0`
+  `update_checker.py`: `parse_version`, `fetch_latest_release` (urllib stdlib), `check_for_update` (pura, testável) e `UpdateWorker(QThread)`. `GITHUB_REPO` adicionado a `version.py`. `MainWindow._start_update_check()` inicia o worker no final do `__init__`; `_on_update_available` exibe `QMessageBox.question` e abre `QDesktopServices.openUrl` se confirmado. Falha silenciosa: erros de rede são logados em DEBUG e não interrompem a UI. 23 testes sem acesso à internet.
+
+### Pendentes — Q4 2026
 
 - ⏳ **FEATURE-021 — Parser Customizável** `P4`
   Permitir que o usuário defina padrões próprios de extração de título/autor a partir do nome do arquivo (ex: `{AUTOR} — {TITULO} [{ANO}]`), além dos padrões embutidos.

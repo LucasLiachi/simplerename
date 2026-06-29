@@ -121,6 +121,9 @@ class MainWindow(QMainWindow):
 
         self._update_toolbar_state()
 
+        # Verificação de atualização em background (falha silenciosamente)
+        self._start_update_check()
+
     def _setup_toolbar(self) -> None:
         """Cria toolbar: Abrir Pasta, Buscar, Renomear, Recarregar, Aplicar com Pastas, filtro, histórico."""
         tb = self.addToolBar("Principal")
@@ -252,6 +255,31 @@ class MainWindow(QMainWindow):
         self.apply_folders_action.setToolTip(
             f"Organizar arquivos em subpastas CDD\nDestino: {dest}"
         )
+
+    def _start_update_check(self) -> None:
+        """Inicia verificação de atualização em background. Falha silenciosamente."""
+        from .update_checker import UpdateWorker
+        from .version import __version__, GITHUB_REPO
+        self._update_worker = UpdateWorker(__version__, GITHUB_REPO, parent=self)
+        self._update_worker.update_available.connect(self._on_update_available)
+        self._update_worker.start()
+
+    def _on_update_available(self, info: object) -> None:
+        """Exibe dialog quando uma versão mais recente está disponível."""
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(
+            self,
+            "Atualização disponível",
+            f"Nova versão disponível: v{info.latest_version}\n"
+            f"Versão instalada:       v{info.current_version}\n\n"
+            "Deseja abrir a página de download?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            url = info.download_url or info.release_url
+            QDesktopServices.openUrl(QUrl(url))
 
     def _on_toggle_history(self, checked: bool) -> None:
         """Mostra ou oculta o painel de histórico de renomes."""
