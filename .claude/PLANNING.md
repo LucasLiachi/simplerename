@@ -67,8 +67,8 @@ O usuário seleciona uma pasta, vê os arquivos em uma planilha dual-faixa (azul
 
 ### Pendentes — Q4 2026
 
-- ⏳ **FEATURE-019 — Code Signing do Instalador** `P3`
-  Assinar o `SimpleRename-Setup-X.Y.Z.exe` com certificado EV para eliminar o alerta de antivírus do Windows SmartScreen. Requer certificado pago (~$200/ano).
+- ✅ **FEATURE-019 — Code Signing do Instalador** `v1.4.0`
+  Etapa `Sign executables` adicionada ao `build-release.yml` após o NSIS e antes do upload. Usa `signtool.exe` (Windows SDK, disponível em `windows-latest`) via PowerShell com `try/finally` para garantir remoção do PFX. Execução condicional: se `CODE_SIGN_CERTIFICATE` não estiver configurado como secret do repositório, a etapa é ignorada sem falhar. **Pré-requisito externo:** adquirir certificado EV (~$200/ano em DigiCert/Sectigo/GlobalSign) e configurar os secrets `CODE_SIGN_CERTIFICATE` (PFX em base64) e `CODE_SIGN_PASSWORD` em Settings → Secrets → Actions.
 
 - ⏳ **FEATURE-020 — Auto-update** `P3`
   Verificar ao abrir o app se existe tag mais recente no GitHub e oferecer download. Implementável via `urllib` consultando a GitHub Releases API.
